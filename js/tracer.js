@@ -25,12 +25,21 @@ precision mediump float;
 
 // our texture
 uniform sampler2D u_image;
+uniform vec2 u_resolution;
 
 // the texCoords passed in from the vertex shader.
 varying vec2 v_texCoord;
 
 void main() {
-   gl_FragColor = texture2D(u_image, v_texCoord);
+	vec2 offset = 1 / u_resolution;
+
+	float myColour = texture2D(u_image, v_texCoord).r;
+	float nx = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y)) -
+		myColour - texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y));
+	float ny = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y)) -
+		myColour - texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y));
+	
+   gl_FragColor = normalize(vec3(nx,ny,(1.0 - nx) + (1.0 - ny)));
 }
 `, "fragment");
 
