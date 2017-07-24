@@ -80,6 +80,203 @@ let rays = [];
 let swidth = 0;
 let sheight = 0;
 
+function initGL(canvas) {
+	// WebGL INIT
+	let gl = canvas.getContext("webgl");
+	//gl.clearColor(0.0,0.0,0.0, 1.0);
+	//gl.enable(gl.DEPTH_TEST);
+	//gl.viewportWidth = canvas.width;
+	//gl.viewportHeight = canvas.height;
+
+	//canvas.shader = initShaders(gl);
+	return gl;
+}
+
+function initShaders(gl) {
+	let fragmentShader = getShader(gl, `
+precision mediump float;
+
+// our texture
+uniform sampler2D u_image;
+
+// the texCoords passed in from the vertex shader.
+varying vec2 v_texCoord;
+
+void main() {
+   gl_FragColor = texture2D(u_image, v_texCoord);
+}
+`, "fragment");
+
+	let vertexShader = getShader(gl, `
+attribute vec2 a_position;
+attribute vec2 a_texCoord;
+
+uniform vec2 u_resolution;
+
+varying vec2 v_texCoord;
+
+void main() {
+   // convert the rectangle from pixels to 0.0 to 1.0
+   vec2 zeroToOne = a_position / u_resolution;
+
+   // convert from 0->1 to 0->2
+   vec2 zeroToTwo = zeroToOne * 2.0;
+
+   // convert from 0->2 to -1->+1 (clipspace)
+   vec2 clipSpace = zeroToTwo - 1.0;
+
+   gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
+
+   // pass the texCoord to the fragment shader
+   // The GPU will interpolate this value between points.
+   v_texCoord = a_texCoord;
+}
+`, "vertex");
+	
+	let shaderProgram = gl.createProgram();
+    gl.attachShader(shaderProgram, vertexShader);
+    gl.attachShader(shaderProgram, fragmentShader);
+    gl.linkProgram(shaderProgram);
+
+    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+      alert("Could not initialise shaders");
+    }
+
+    //gl.useProgram(shaderProgram);
+	return shaderProgram;
+}
+
+function getShader(gl, str, kind) {
+      var shader;
+      if (kind == "fragment") {
+          shader = gl.createShader(gl.FRAGMENT_SHADER);
+      } else if (kind == "vertex") {
+          shader = gl.createShader(gl.VERTEX_SHADER);
+      } else {
+          return null;
+      }
+
+      gl.shaderSource(shader, str);
+      gl.compileShader(shader);
+
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          alert(gl.getShaderInfoLog(shader));
+          return null;
+      }
+
+      return shader;
+  }
+
+function setRectangle(gl, x, y, width, height) {
+  var x1 = x;
+  var x2 = x + width;
+  var y1 = y;
+  var y2 = y + height;
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+     x1, y1,
+     x2, y1,
+     x1, y2,
+     x1, y2,
+     x2, y1,
+     x2, y2,
+  ]), gl.STATIC_DRAW);
+}
+
+function setupGL(canvas, gl, program) {
+	var positionLocation = gl.getAttribLocation(program, "a_position");
+  	var texcoordLocation = gl.getAttribLocation(program, "a_texCoord");
+
+  // Create a buffer to put three 2d clip space points in
+  var positionBuffer = gl.createBuffer();
+
+  // Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  // Set a rectangle the same size as the image.
+  setRectangle(gl, 0, 0, canvas.width, canvas.height);
+
+  // provide texture coordinates for the rectangle.
+  var texcoordBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      0.0,  0.0,
+      1.0,  0.0,
+      0.0,  1.0,
+      0.0,  1.0,
+      1.0,  0.0,
+      1.0,  1.0,
+  ]), gl.STATIC_DRAW);
+
+  // Create a texture.
+  var texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+
+  // Set the parameters so we can render any size image.
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+  // lookup uniforms
+  var resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+
+// Tell WebGL how to convert from clip space to pixels
+  gl.viewport(0, 0, canvas.width, canvas.height);
+
+  // Clear the canvas
+  gl.clearColor(0, 0, 0, 1.0);
+  //gl.clear(gl.COLOR_BUFFER_BIT);
+
+  // Tell it to use our program (pair of shaders)
+  gl.useProgram(program);
+
+  // Turn on the position attribute
+  gl.enableVertexAttribArray(positionLocation);
+
+  // Bind the position buffer.
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+  // Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
+  var size = 2;          // 2 components per iteration
+  var type = gl.FLOAT;   // the data is 32bit floats
+  var normalize = false; // don't normalize the data
+  var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+  var offset = 0;        // start at the beginning of the buffer
+  gl.vertexAttribPointer(
+      positionLocation, size, type, normalize, stride, offset)
+
+  // Turn on the teccord attribute
+  gl.enableVertexAttribArray(texcoordLocation);
+
+  // Bind the position buffer.
+  gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
+
+  // Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
+  var size = 2;          // 2 components per iteration
+  var type = gl.FLOAT;   // the data is 32bit floats
+  var normalize = false; // don't normalize the data
+  var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+  var offset = 0;        // start at the beginning of the buffer
+  gl.vertexAttribPointer(
+      texcoordLocation, size, type, normalize, stride, offset)
+
+  // set the resolution
+  gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+}
+
+function render(gl, image, canvas) {
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+	// Upload the image into the texture.
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, image);
+
+  // Draw the rectangle.
+  var primitiveType = gl.TRIANGLES;
+  var offset = 0;
+  var count = 6;
+  gl.drawArrays(primitiveType, offset, count);
+	//console.log("RENDER", image);
+}
+
 
 function make(vp, matrix) {
 	var rays = [];
@@ -148,8 +345,7 @@ function make(vp, matrix) {
 	return results;
 }*/
 
-var ctx;
-var idata;
+var odata;
 
 function seed(rays, q, gap) {
 	for (var y=0; y<rays.length; y+=gap) {
@@ -193,16 +389,17 @@ function process(rays, q, vp, f, multiplier) {
 	return nq;
 }
 
-function processResults(ctx, vp, rays) {
+function processResults(vp, rays) {
 	if (rays.length == 0) return;
 
-	var odata = idata.data;
+	//var odata = idata.data;
 
-	var scale = 256 / vp.count;
+	var scale = 255 / vp.count;
 
 	for (var i=0; i<rays.length; i++) {
 		let ray = rays[i];
 		if (ray.visited === false) continue;
+		if (ray.count < 0) ray.count = 0;
 
 		//var ix = results[i][0];
 		var ix = ray.sx + ray.sy * vp.width; //(results[i].cx+1)*(swidth/2) + (results[i].cy+1)*(sheight/2) * swidth;
@@ -219,17 +416,25 @@ function processResults(ctx, vp, rays) {
 function trace(output, f, options) {
 	if (!options) options = {};
 	var dres = (options.depthResolution) ? options.depthResolution : 100;
-	ctx = output.getContext('2d');
-	var odata = ctx.createImageData(output.width, output.height);
+	//ctx = output.getContext('2d');
+	let gl = output.getContext("webgl");
+	let program = initShaders(gl);
+	setupGL(output, gl, program);
+
+	odata = new Uint8Array(output.width*output.height*4); //ctx.createImageData(output.width, output.height);
+	for (var i=3; i<odata.length; i+=4) odata[i] = 255;
 	var bound = (options.boundary) ? options.boundary : [-1,1];
 	var fov = (options.fov) ? options.fov : 45;
 	var sample = (options.sample) ? options.sample : 8;
 	var progressive = (options.progressive) ? options.progressive : false;
 
-	ctx.fillStyle = "black";
-	ctx.fillRect(0,0,output.width,output.height);
+	/*ctx.fillStyle = "black";
+	ctx.fillRect(0,0,output.width,output.height);*/
 
-	idata = ctx.getImageData(0,0,output.width, output.height);
+	//var gl = initGL(output);
+	
+
+	//idata = ctx.getImageData(0,0,output.width, output.height);
 
 	//resize(bound, fov, f, (bound[1] - bound[0]) / dres, output.width, output.height);
 
@@ -248,7 +453,7 @@ function trace(output, f, options) {
 	seed(rays, q, sample);
 	var oq = q;
 	q = process(rays, q, vp, f, sample);
-	processResults(ctx, vp, oq);
+	processResults(vp, oq);
 
 	// Sort the initial seed results?
 	/*q = q.sort(function(a,b) {
@@ -262,18 +467,19 @@ function trace(output, f, options) {
 			var oq = q;
 			q = process(rays, q, vp, f, 1);
 			//console.log("Res length",q.length);
-			processResults(ctx, vp, oq);
+			processResults(vp, oq);
 		}
 
 		console.timeEnd("trace");
-		ctx.putImageData(idata, 0, 0);
+		//ctx.putImageData(idata, 0, 0);
+		render(gl, odata, output);
 	} else {
 		function processLoop() {
 			var oq = q;
 			q = process(rays, q, vp, f, 1);
 			//console.log("Res length",q.length);
-			processResults(ctx, vp, oq);
-			ctx.putImageData(idata, 0, 0);
+			processResults(vp, oq);
+			//ctx.putImageData(idata, 0, 0);
 
 			if (q.length > 0) setTimeout(processLoop, 0);
 			else console.timeEnd("trace");
