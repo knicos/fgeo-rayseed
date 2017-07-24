@@ -132,18 +132,14 @@ void main() {
 
 	vec4 myColour = texture2D(u_image, v_texCoord);
 	vec3 P0 = myColour.rgb;
-	vec3 P1 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y)).rgb;
-	vec3 P2 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y)).rgb;
-	vec3 P3 = texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y - offset.y)).rgb;
-	vec3 P4 = texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y + offset.y)).rgb;
-	//vec3 P5 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y + offset.y)).rgb;
-	//vec3 P6 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y + offset.y)).rgb;
-	//vec3 P7 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y - offset.y)).rgb;
-	//vec3 P8 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y - offset.y)).rgb;
-	vec3 N1 = normalize(cross(P1-P0,P3-P0));
-	vec3 N2 = normalize(cross(P2-P0,P4-P0));
-	vec3 N3 = normalize(cross(P1-P0,P4-P0));
-	vec3 N4 = normalize(cross(P2-P0,P3-P0));
+	vec4 P1 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y));
+	vec4 P2 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y));
+	vec4 P3 = texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y - offset.y));
+	vec4 P4 = texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y + offset.y));
+	vec3 N1 = normalize(cross(P1.rgb-P0,P3.rgb-P0))*P1.a*P3.a;
+	vec3 N2 = normalize(cross(P2.rgb-P0,P4.rgb-P0))*P2.a*P4.a;
+	vec3 N3 = normalize(cross(P1.rgb-P0,P4.rgb-P0))*P1.a*P4.a;
+	vec3 N4 = normalize(cross(P2.rgb-P0,P3.rgb-P0))*P2.a*P3.a;
 	//vec3 N5 = normalize(cross(P5-P0,P7-P0));
 	//vec3 N6 = normalize(cross(P5-P0,P6-P0));
 	//vec3 N7 = normalize(cross(P8-P0,P7-P0));
