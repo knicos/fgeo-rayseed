@@ -44,13 +44,13 @@ Ray.prototype.moveTo = function(pos) {
 /* March deeper from current point until intersection. */
 Ray.prototype.march = function(vp, f, multiplier) {
 	//this.visited = true;
-	while (this.count < vp.count) {
+	while (this.count < vp.count*1.5) {
 		//console.log("RAY");
 		var res = f(this.x, this.y, this.z);
 		this.value = res;
 		if (res >= 0) {
 			// TODO Refine...
-			//this.refine(f)
+			this.refine(f)
 			return true;
 		}
 
@@ -65,16 +65,20 @@ Ray.prototype.march = function(vp, f, multiplier) {
 
 /* March towards camera at finer steps until surface found */
 Ray.prototype.refine = function(f) {
-	const multiplier = 1;
+	let multiplier = 0.5;
 	//this.visited = true;
-	while (this.count > 0) {
+	while (true) { //this.count > 0) {
 		var tx = this.x - this.dx*multiplier;
 		var ty = this.y - this.dy*multiplier;
 		var tz = this.z - this.dz*multiplier;
 		var res = f(tx, ty, tz);
 		if (res < 0) {
-			var diff = 1.0 / res - this.value;
-			
+			var total = this.value + Math.abs(res);
+			var lerp = this.value / total;
+			multiplier = multiplier * lerp;
+			this.x -= this.dx*multiplier;
+			this.y -= this.dy*multiplier;
+			this.z -= this.dz*multiplier;
 			return;
 		}
 
@@ -126,18 +130,28 @@ void main() {
 	//vec2 offset = vec2(1.0 / 640.0, 1.0 / 480.0);
 	vec2 offset = 1.0 / u_resolution;
 
-	float myColour = texture2D(u_image, v_texCoord).r;
-	vec3 P1 = (vec3(- offset.x, 0, texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y)).r - myColour));
-	vec3 P2 = (vec3(offset.x, 0, texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y)).r - myColour));
-	vec3 P3 = (vec3(0, - offset.y, texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y - offset.y)).r - myColour));
-	vec3 P4 = (vec3(0, offset.y, texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y + offset.y)).r - myColour));
-	vec3 N1 = normalize(cross(P1,P3));
-	vec3 N2 = normalize(cross(P2,P4));
-	vec3 N3 = normalize(cross(P1,P4));
-	vec3 N4 = normalize(cross(P2,P3));
-	vec3 N = normalize(N1+N2+N3+N4);
+	vec4 myColour = texture2D(u_image, v_texCoord);
+	vec3 P0 = myColour.rgb;
+	vec3 P1 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y)).rgb;
+	vec3 P2 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y)).rgb;
+	vec3 P3 = texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y - offset.y)).rgb;
+	vec3 P4 = texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y + offset.y)).rgb;
+	//vec3 P5 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y + offset.y)).rgb;
+	//vec3 P6 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y + offset.y)).rgb;
+	//vec3 P7 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y - offset.y)).rgb;
+	//vec3 P8 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y - offset.y)).rgb;
+	vec3 N1 = normalize(cross(P1-P0,P3-P0));
+	vec3 N2 = normalize(cross(P2-P0,P4-P0));
+	vec3 N3 = normalize(cross(P1-P0,P4-P0));
+	vec3 N4 = normalize(cross(P2-P0,P3-P0));
+	//vec3 N5 = normalize(cross(P5-P0,P7-P0));
+	//vec3 N6 = normalize(cross(P5-P0,P6-P0));
+	//vec3 N7 = normalize(cross(P8-P0,P7-P0));
+	//vec3 N8 = normalize(cross(P8-P0,P6-P0));
+	
+	vec3 N = normalize(N1-N3+N2-N4); //+N5+N6+N7+N8);
 
-	vec3 uAmbientColor = vec3(0.3,0.3,0.3);
+	vec3 uAmbientColor = vec3(0.2,0.2,0.2);
 	vec3 uPointLightingColor = vec3(1.0,0.8,0.8);
 
 	vec3 lightWeighting;
@@ -147,7 +161,7 @@ void main() {
       lightWeighting = uAmbientColor + uPointLightingColor * directionalLightWeighting;
 
    //gl_FragColor = vec4(nx,ny,nz,1.0);
-	if (myColour == 0.0) {
+	if (myColour.a != 1.0) {
 		gl_FragColor = vec4(0.0,0.0,0.0,1.0);
 	} else {
 		gl_FragColor = vec4(vec3(1.0,1.0,1.0) * lightWeighting, 1.0);
@@ -316,7 +330,7 @@ function render(gl, image, canvas) {
   var ext = gl.getExtension('OES_texture_float');
 
 	// Upload the image into the texture.
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, canvas.width, canvas.height, 0, gl.LUMINANCE, gl.FLOAT, image);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.FLOAT, image);
 
   // Draw the rectangle.
   var primitiveType = gl.TRIANGLES;
@@ -448,7 +462,7 @@ function processResults(vp, rays) {
 	for (var i=0; i<rays.length; i++) {
 		let ray = rays[i];
 		if (ray.visited === false) continue;
-		if (ray.count < 0) continue;
+		//if (ray.count < 0) ray.count = 0;
 
 		//var ix = results[i][0];
 		var ix = ray.sx + ray.sy * vp.width; //(results[i].cx+1)*(swidth/2) + (results[i].cy+1)*(sheight/2) * swidth;
@@ -458,7 +472,12 @@ function processResults(vp, rays) {
 		odata[ix*4+2] = bw;
 		odata[ix*4+3] = 255;*/
 
-		odata[ix] = ray.count / vp.count; //(ray.z + 1.0) / 2.0;
+		//odata[ix] = ray.count / vp.count; //(ray.z + 1.0) / 2.0;
+
+		odata[ix*4] = ray.x;
+		odata[ix*4+1] = ray.y;
+		odata[ix*4+2] = ray.z;
+		odata[ix*4+3] = 1.0;
 	}
 
 	//ctx.putImageData(idata, 0, 0);
@@ -531,6 +550,7 @@ function trace(output, f, options) {
 			//console.log("Res length",q.length);
 			processResults(vp, oq);
 			//ctx.putImageData(idata, 0, 0);
+			render(gl, odata, output);
 
 			if (q.length > 0) setTimeout(processLoop, 0);
 			else console.timeEnd("trace");

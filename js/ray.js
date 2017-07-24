@@ -37,13 +37,13 @@ Ray.prototype.moveTo = function(pos) {
 /* March deeper from current point until intersection. */
 Ray.prototype.march = function(vp, f, multiplier) {
 	//this.visited = true;
-	while (this.count < vp.count) {
+	while (this.count < vp.count*1.5) {
 		//console.log("RAY");
 		var res = f(this.x, this.y, this.z);
 		this.value = res;
 		if (res >= 0) {
 			// TODO Refine...
-			//this.refine(f)
+			this.refine(f)
 			return true;
 		}
 
@@ -58,16 +58,20 @@ Ray.prototype.march = function(vp, f, multiplier) {
 
 /* March towards camera at finer steps until surface found */
 Ray.prototype.refine = function(f) {
-	const multiplier = 1;
+	let multiplier = 0.5;
 	//this.visited = true;
-	while (this.count > 0) {
+	while (true) { //this.count > 0) {
 		var tx = this.x - this.dx*multiplier;
 		var ty = this.y - this.dy*multiplier;
 		var tz = this.z - this.dz*multiplier;
 		var res = f(tx, ty, tz);
 		if (res < 0) {
-			var diff = 1.0 / res - this.value;
-			
+			var total = this.value + Math.abs(res);
+			var lerp = this.value / total;
+			multiplier = multiplier * lerp;
+			this.x -= this.dx*multiplier;
+			this.y -= this.dy*multiplier;
+			this.z -= this.dz*multiplier;
 			return;
 		}
 
