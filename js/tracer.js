@@ -347,7 +347,7 @@ function process(rays, q, vp, f, multiplier) {
 					nq.push(n[j]);
 					n[j].visited = true;
 					// Make sure neighbours are moved to correct location	
-					n[j].moveTo(q[i].count-multiplier);
+					//n[j].moveTo(q[i].count-multiplier);
 				}
 			}
 		}
@@ -426,7 +426,7 @@ function trace(output, f, options) {
 
 	seed(rays, q, sample);
 	var oq = q;
-	q = process(rays, q, vp, f, sample);
+	q = process(rays, q, vp, f, 1);
 	processResults(vp, oq);
 
 	// Sort the initial seed results?

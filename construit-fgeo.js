@@ -44,7 +44,7 @@ Ray.prototype.moveTo = function(pos) {
 /* March deeper from current point until intersection. */
 Ray.prototype.march = function(vp, f, multiplier) {
 	//this.visited = true;
-	while (this.count < vp.count*1.5) {
+	while (this.count < vp.count*1.0) {
 		//console.log("RAY");
 		var res = f(this.x, this.y, this.z);
 		this.value = res;
@@ -67,7 +67,7 @@ Ray.prototype.march = function(vp, f, multiplier) {
 Ray.prototype.refine = function(f) {
 	let multiplier = 0.5;
 	//this.visited = true;
-	while (true) { //this.count > 0) {
+	while (this.count > 0) {
 		var tx = this.x - this.dx*multiplier;
 		var ty = this.y - this.dy*multiplier;
 		var tz = this.z - this.dz*multiplier;
@@ -443,7 +443,7 @@ function process(rays, q, vp, f, multiplier) {
 					nq.push(n[j]);
 					n[j].visited = true;
 					// Make sure neighbours are moved to correct location	
-					n[j].moveTo(q[i].count-multiplier);
+					//n[j].moveTo(q[i].count-multiplier);
 				}
 			}
 		}
@@ -522,7 +522,7 @@ function trace(output, f, options) {
 
 	seed(rays, q, sample);
 	var oq = q;
-	q = process(rays, q, vp, f, sample);
+	q = process(rays, q, vp, f, 1);
 	processResults(vp, oq);
 
 	// Sort the initial seed results?

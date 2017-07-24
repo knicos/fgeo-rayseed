@@ -25,19 +25,98 @@
 		vec3.set (translation, x, y, z);
 		mat4.translate(mmatrix,mmatrix,translation);
 
-		Construit.fgeo.trace(output,
-			function(x,y,z) {
-				const c = 1.8585;
-				let x2 = x*x;
-				let y2 = y*y;
-				let z2 = z*z;
-				return 0.02 - (Math.pow(x2 + y2 - c, 2) + Math.pow(z2 - 1, 2)) *
-					(Math.pow(y2 + z2 - c, 2) + Math.pow(x2 - 1, 2)) *
-					(Math.pow(x2 + z2 - c, 2) + Math.pow(y2 - 1, 2));			
-			},
-			{boundary: [-1.5,1.5], depthResolution: 100, fov: 45, sample: 8, progressive: false,
+		function quaternion(x,y,z) {
+			const lvalue = 0.0;
+			var q1,q2,q3,q4, i, temp, length;
+			q1 = x;
+			q2 = y;
+			q3 = z;
+			q4 = lvalue;
+
+			const c1 = -1.0;
+			const c2 = -0.13;
+			const c3 = 0.0;
+			const c4 = 0.0;
+
+			const bailout = 4.0;
+			const maxiter = 8;
+			var bailoutsq = bailout*bailout;
+
+			 for (i=0; i<maxiter; i++) {
+				temp = 2.0 * q1;
+				q1 = Math.pow(q1,2) - Math.pow(q2,2) - Math.pow(q3,2) - Math.pow(q4,2) + c1;
+				q2 = (temp * q2) + c2;
+				q3 = (temp * q3) + c3;
+				q4 = (temp * q4) + c4;
+				length = Math.pow(q1,2) + Math.pow(q2,2) + Math.pow(q3,2) + Math.pow(q4,2);
+				if (length > bailoutsq) {
+				   break;
+				}
+			 }
+
+			return Math.sqrt(length) - bailout;
+		}
+
+		function decocube(x,y,z) {
+			const c = 1.8585;
+			let x2 = x*x;
+			let y2 = y*y;
+			let z2 = z*z;
+			return 0.02 - (Math.pow(x2 + y2 - c, 2) + Math.pow(z2 - 1, 2)) *
+				(Math.pow(y2 + z2 - c, 2) + Math.pow(x2 - 1, 2)) *
+				(Math.pow(x2 + z2 - c, 2) + Math.pow(y2 - 1, 2));			
+		}
+
+		function CSGUnion(a,b) {
+			return Math.max(a,b);
+		}
+
+		function CSGSubtract(a,b) {
+			return Math.min(a,-b);
+		}
+
+		function CSGSphere(x, center, R) {
+			var x0, x1, x2;
+			x0 = x[0] - center[0];
+			x1 = x[1] - center[1];
+			x2 = x[2] - center[2];
+			return (R*R) - (x0*x0) - (x1*x1) - (x2*x2);
+		}
+
+		function CSGBlendUni(f1,f2,a0,a1,a2) {
+			var uni,f1a1,f2a2,disp;
+			uni = f1 + f2 + Math.sqrt(f1*f1+f2*f2);
+			f1a1 = f1 / a1;
+			f2a2 = f2 / a2;
+			disp = a0 / (1 + f1a1*f1a1 + f2a2*f2a2);
+			return uni + disp;
+		}
+
+		function pooh(i,j,k) {
+			const x = [i,j,k];
+			const sphere1 = CSGSphere(x, [0.0,0.0,0.0], 6.0);
+			const sphere2 = CSGSphere(x, [0,0,-6.0], 2.0);
+			//const ear1 = CSGSphere(x, [-0.0934,-4.6164,4.1060], 2.0);
+			//const ear2 = CSGSphere(x, [-1.1968,-3.9183,-4.1060], 2.0);
+			const body = CSGSubtract(sphere1,sphere2);
+			return body; //CSGBlendUni(CSGUnion(ear1,ear2),body, 2,2,3);
+		}
+
+		Construit.fgeo.trace(output, decocube,
+			{boundary: [-1.5,1.5], depthResolution: 100, fov: 45, sample: 8, progressive: true,
 				matrix: mmatrix}
 		);
+
+
+		/*Construit.fgeo.trace(output, pooh,
+			{boundary: [-6,6], depthResolution: 200, fov: 45, sample: 8, progressive: true,
+				matrix: mmatrix}
+		);*/
+
+		/*Construit.fgeo.trace(output, quaternion,
+			{boundary: [-200.0,200.0], depthResolution: 100, fov: 45, sample: 8, progressive: true,
+				matrix: mmatrix}
+		);*/
 	}
 	
 	window.onload = function() {
