@@ -50,6 +50,7 @@ Ray.prototype.march = function(vp, f, multiplier) {
 		this.value = res;
 		if (res >= 0) {
 			// TODO Refine...
+			//this.refine(f)
 			return true;
 		}
 
@@ -63,8 +64,26 @@ Ray.prototype.march = function(vp, f, multiplier) {
 }
 
 /* March towards camera at finer steps until surface found */
-Ray.prototype.refine = function(func) {
+Ray.prototype.refine = function(f) {
+	const multiplier = 1;
+	//this.visited = true;
+	while (this.count > 0) {
+		var tx = this.x - this.dx*multiplier;
+		var ty = this.y - this.dy*multiplier;
+		var tz = this.z - this.dz*multiplier;
+		var res = f(tx, ty, tz);
+		if (res < 0) {
+			var diff = 1.0 / res - this.value;
+			
+			return;
+		}
 
+		this.value = res;
+		this.x = tx;
+		this.y = ty;
+		this.z = tz;
+		this.count -= multiplier;
+	}
 }
 
 module.exports = Ray;
@@ -98,12 +117,41 @@ precision mediump float;
 
 // our texture
 uniform sampler2D u_image;
+uniform highp vec2 u_resolution;
 
 // the texCoords passed in from the vertex shader.
 varying vec2 v_texCoord;
 
 void main() {
-   gl_FragColor = texture2D(u_image, v_texCoord);
+	//vec2 offset = vec2(1.0 / 640.0, 1.0 / 480.0);
+	vec2 offset = 1.0 / u_resolution;
+
+	float myColour = texture2D(u_image, v_texCoord).r;
+	vec3 P1 = (vec3(- offset.x, 0, texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y)).r - myColour));
+	vec3 P2 = (vec3(offset.x, 0, texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y)).r - myColour));
+	vec3 P3 = (vec3(0, - offset.y, texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y - offset.y)).r - myColour));
+	vec3 P4 = (vec3(0, offset.y, texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y + offset.y)).r - myColour));
+	vec3 N1 = normalize(cross(P1,P3));
+	vec3 N2 = normalize(cross(P2,P4));
+	vec3 N3 = normalize(cross(P1,P4));
+	vec3 N4 = normalize(cross(P2,P3));
+	vec3 N = normalize(N1+N2+N3+N4);
+
+	vec3 uAmbientColor = vec3(0.3,0.3,0.3);
+	vec3 uPointLightingColor = vec3(1.0,0.8,0.8);
+
+	vec3 lightWeighting;
+      vec3 lightDirection = normalize(vec3(1.0,0.2,-0.2)); //normalize(uPointLightingLocation - vPosition.xyz);
+
+      float directionalLightWeighting = max(dot(N, lightDirection), 0.0);
+      lightWeighting = uAmbientColor + uPointLightingColor * directionalLightWeighting;
+
+   //gl_FragColor = vec4(nx,ny,nz,1.0);
+	if (myColour == 0.0) {
+		gl_FragColor = vec4(0.0,0.0,0.0,1.0);
+	} else {
+		gl_FragColor = vec4(vec3(1.0,1.0,1.0) * lightWeighting, 1.0);
+	}
 }
 `, "fragment");
 
@@ -265,9 +313,10 @@ function setupGL(canvas, gl, program) {
 
 function render(gl, image, canvas) {
   gl.clear(gl.COLOR_BUFFER_BIT);
+  var ext = gl.getExtension('OES_texture_float');
 
 	// Upload the image into the texture.
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, image);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, canvas.width, canvas.height, 0, gl.LUMINANCE, gl.FLOAT, image);
 
   // Draw the rectangle.
   var primitiveType = gl.TRIANGLES;
@@ -399,15 +448,17 @@ function processResults(vp, rays) {
 	for (var i=0; i<rays.length; i++) {
 		let ray = rays[i];
 		if (ray.visited === false) continue;
-		if (ray.count < 0) ray.count = 0;
+		if (ray.count < 0) continue;
 
 		//var ix = results[i][0];
 		var ix = ray.sx + ray.sy * vp.width; //(results[i].cx+1)*(swidth/2) + (results[i].cy+1)*(sheight/2) * swidth;
-		var bw = Math.floor((vp.count - ray.count) * scale);
+		/*var bw = Math.floor((vp.count - ray.count) * scale);
 		odata[ix*4] = bw;
 		odata[ix*4+1] = bw;
 		odata[ix*4+2] = bw;
-		odata[ix*4+3] = 255;
+		odata[ix*4+3] = 255;*/
+
+		odata[ix] = ray.count / vp.count; //(ray.z + 1.0) / 2.0;
 	}
 
 	//ctx.putImageData(idata, 0, 0);
@@ -421,8 +472,8 @@ function trace(output, f, options) {
 	let program = initShaders(gl);
 	setupGL(output, gl, program);
 
-	odata = new Uint8Array(output.width*output.height*4); //ctx.createImageData(output.width, output.height);
-	for (var i=3; i<odata.length; i+=4) odata[i] = 255;
+	odata = new Float32Array(output.width*output.height*4); //ctx.createImageData(output.width, output.height);
+	//for (var i=3; i<odata.length; i+=4) odata[i] = 255;
 	var bound = (options.boundary) ? options.boundary : [-1,1];
 	var fov = (options.fov) ? options.fov : 45;
 	var sample = (options.sample) ? options.sample : 8;

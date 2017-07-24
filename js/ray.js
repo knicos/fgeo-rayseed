@@ -43,6 +43,7 @@ Ray.prototype.march = function(vp, f, multiplier) {
 		this.value = res;
 		if (res >= 0) {
 			// TODO Refine...
+			//this.refine(f)
 			return true;
 		}
 
@@ -56,8 +57,26 @@ Ray.prototype.march = function(vp, f, multiplier) {
 }
 
 /* March towards camera at finer steps until surface found */
-Ray.prototype.refine = function(func) {
+Ray.prototype.refine = function(f) {
+	const multiplier = 1;
+	//this.visited = true;
+	while (this.count > 0) {
+		var tx = this.x - this.dx*multiplier;
+		var ty = this.y - this.dy*multiplier;
+		var tz = this.z - this.dz*multiplier;
+		var res = f(tx, ty, tz);
+		if (res < 0) {
+			var diff = 1.0 / res - this.value;
+			
+			return;
+		}
 
+		this.value = res;
+		this.x = tx;
+		this.y = ty;
+		this.z = tz;
+		this.count -= multiplier;
+	}
 }
 
 module.exports = Ray;
