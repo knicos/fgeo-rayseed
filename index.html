@@ -1,0 +1,48 @@
+<html>
+<head>
+<script src="./construit-fgeo.js"></script>
+</head>
+<body>
+<script>
+	function redraw(x,y,z,rx,ry,rz) {
+		const mat4 = Construit.fgeo.glmatrix.mat4;
+		const vec3 = Construit.fgeo.glmatrix.vec3;
+
+		var output = document.getElementById("output");
+
+		/*var mmatrix = mat4.create();
+		mat4.identity(mmatrix);
+
+		var rot = vec3.create();
+		vec3.set(rot, 1, 0, 0);
+		mat4.rotate(mmatrix, mmatrix, rx * Math.PI / 180, rot);
+		vec3.set(rot, 0, 1, 0);
+		mat4.rotate(mmatrix, mmatrix, ry * Math.PI / 180, rot);
+		vec3.set(rot, 0, 0, 1);
+		mat4.rotate(mmatrix, mmatrix, rz * Math.PI / 180, rot);
+
+		var translation = vec3.create();
+		vec3.set (translation, x, y, z);
+		mat4.translate(mmatrix,mmatrix,translation);*/
+
+		Construit.fgeo.trace(output,
+			function(x,y,z) {
+				const c = 1.8585;
+				let x2 = x*x;
+				let y2 = y*y;
+				let z2 = z*z;
+				return 0.02 - (Math.pow(x2 + y2 - c, 2) + Math.pow(z2 - 1, 2)) *
+					(Math.pow(y2 + z2 - c, 2) + Math.pow(x2 - 1, 2)) *
+					(Math.pow(x2 + z2 - c, 2) + Math.pow(y2 - 1, 2));			
+			},
+			{boundary: [-1.5,1.5], depthResolution: 100, fov: 45}
+		);
+	}
+	
+	window.onload = function() {
+		redraw(0,0,0,0,0,0);
+	}
+</script>
+<canvas width="640" height="480" id="output"></canvas>
+</body>
+</html>

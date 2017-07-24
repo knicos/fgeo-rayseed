@@ -1,0 +1,19 @@
+{
+  "name": "@construit/fgeo",
+  "version": "1.0.0",
+  "description": "Functional Geometry Ray Tracer",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha test"
+  },
+  "author": "Nicolas Pope",
+  "license": "BSD-2-Clause",
+  "devDependencies": {
+    "browserify": "^14.4.0",
+    "grunt": "^1.0.1",
+    "grunt-browserify": "^5.0.0"
+  },
+  "dependencies": {
+    "gl-matrix": "^2.3.2"
+  }
+}
