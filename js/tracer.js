@@ -8,7 +8,7 @@ let swidth = 0;
 let sheight = 0;
 
 
-function make(vp) {
+function make(vp, matrix) {
 	var rays = [];
 	var dres = vp.dres;
 	var dx = ((vp.bound[1] - vp.bound[0]) / vp.width) * vp.aspect;
@@ -24,12 +24,16 @@ function make(vp) {
 		for (var i=0; i<vp.width; i++) {
 			var x = vp.bound[0] + i*dx - ox;
 			var y = vp.bound[0] + j*dy;
-			var n = new Ray(x, y, vp.nearClip, i, j);
+
+			vec3.set(cam, x,y,vp.nearClip);
+			if (matrix) vec3.transformMat4(cam, cam, matrix);
+			var n = new Ray(cam[0], cam[1], cam[2], i, j);
 
 			var px = ((vp.bound[1] - vp.bound[0]) * (i / vp.width) + vp.bound[0]) * vp.fovtan * vp.aspect;
 			var py = ((vp.bound[1] - vp.bound[0]) * (j / vp.height) + vp.bound[0]) * vp.fovtan;
 
 			vec3.set(cam, px,py,1);
+			if (matrix) vec3.transformMat4(cam, cam, matrix);
 			vec3.normalize(cam,cam);
 
 			n.setDeltas(cam[0]*dres,cam[1]*dres,cam[2]*dres);
@@ -146,6 +150,8 @@ function trace(output, f, options) {
 	var odata = ctx.createImageData(output.width, output.height);
 	var bound = (options.boundary) ? options.boundary : [-1,1];
 	var fov = (options.fov) ? options.fov : 45;
+	var sample = (options.sample) ? options.sample : 8;
+	var progressive = (options.progressive) ? options.progressive : false;
 
 	ctx.fillStyle = "black";
 	ctx.fillRect(0,0,output.width,output.height);
@@ -163,12 +169,12 @@ function trace(output, f, options) {
 
 	console.time("trace");
 
-	var rays = make(vp);
+	var rays = make(vp, options.matrix);
 	var q = [];
 
-	seed(rays, q, 8);
+	seed(rays, q, sample);
 	var oq = q;
-	q = process(rays, q, vp, f, 8);
+	q = process(rays, q, vp, f, sample);
 	processResults(ctx, vp, oq);
 
 	// Sort the initial seed results?
@@ -178,29 +184,29 @@ function trace(output, f, options) {
 
 	//console.log("Proc Seeds", q);
 
-	while (q.length > 0) {
-		var oq = q;
-		q = process(rays, q, vp, f, 1);
-		//console.log("Res length",q.length);
-		processResults(ctx, vp, oq);
-	}
-
-	console.timeEnd("trace");
-	ctx.putImageData(idata, 0, 0);
-
-	/*function processLoop() {
-		var oq = q;
-		q = process(rays, q, vp, f, 1);
-		//console.log("Res length",q.length);
-		processResults(ctx, vp, oq);
-
-		if (q.length > 0) setTimeout(processLoop, 0);
-		else {
-			console.timeEnd("trace");
-			ctx.putImageData(idata, 0, 0);
+	if (!progressive) {
+		while (q.length > 0) {
+			var oq = q;
+			q = process(rays, q, vp, f, 1);
+			//console.log("Res length",q.length);
+			processResults(ctx, vp, oq);
 		}
+
+		console.timeEnd("trace");
+		ctx.putImageData(idata, 0, 0);
+	} else {
+		function processLoop() {
+			var oq = q;
+			q = process(rays, q, vp, f, 1);
+			//console.log("Res length",q.length);
+			processResults(ctx, vp, oq);
+			ctx.putImageData(idata, 0, 0);
+
+			if (q.length > 0) setTimeout(processLoop, 0);
+			else console.timeEnd("trace");
+		}
+		setTimeout(processLoop,0);
 	}
-	setTimeout(processLoop,0);*/
 }
 
 exports.trace = trace;

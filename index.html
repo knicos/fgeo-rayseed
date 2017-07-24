@@ -10,7 +10,7 @@
 
 		var output = document.getElementById("output");
 
-		/*var mmatrix = mat4.create();
+		var mmatrix = mat4.create();
 		mat4.identity(mmatrix);
 
 		var rot = vec3.create();
@@ -23,7 +23,7 @@
 
 		var translation = vec3.create();
 		vec3.set (translation, x, y, z);
-		mat4.translate(mmatrix,mmatrix,translation);*/
+		mat4.translate(mmatrix,mmatrix,translation);
 
 		Construit.fgeo.trace(output,
 			function(x,y,z) {
@@ -35,7 +35,8 @@
 					(Math.pow(y2 + z2 - c, 2) + Math.pow(x2 - 1, 2)) *
 					(Math.pow(x2 + z2 - c, 2) + Math.pow(y2 - 1, 2));			
 			},
-			{boundary: [-1.5,1.5], depthResolution: 100, fov: 45}
+			{boundary: [-1.5,1.5], depthResolution: 100, fov: 45, sample: 16, progressive: true,
+				matrix: mmatrix}
 		);
 	}
 	
