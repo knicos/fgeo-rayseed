@@ -63,6 +63,27 @@ Ray.prototype.march = function(vp, f, multiplier) {
 	return false;
 }
 
+Ray.prototype.reverseMarch = function(vp, f, multiplier) {
+	//this.visited = true;
+	while (this.count > 0) {
+		//console.log("RAY");
+		var res = f(this.x, this.y, this.z);
+		this.value = res;
+		if (res >= 0) {
+			// TODO Refine...
+			//this.refine(f)
+			return true;
+		}
+
+		this.x -= this.dx*multiplier;
+		this.y -= this.dy*multiplier;
+		this.z -= this.dz*multiplier;
+		this.count -= multiplier;
+	}
+	
+	return false;
+}
+
 /* March towards camera at finer steps until surface found */
 Ray.prototype.refine = function(f) {
 	let multiplier = 0.5;
@@ -136,16 +157,23 @@ void main() {
 	vec4 P2 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y));
 	vec4 P3 = texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y - offset.y));
 	vec4 P4 = texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y + offset.y));
+
+	vec4 P5 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y - offset.y));
+	vec4 P6 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y - offset.y));
+	vec4 P7 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y + offset.y));
+	vec4 P8 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y + offset.y));
+
 	vec3 N1 = normalize(cross(P1.rgb-P0,P3.rgb-P0))*P1.a*P3.a;
 	vec3 N2 = normalize(cross(P2.rgb-P0,P4.rgb-P0))*P2.a*P4.a;
 	vec3 N3 = normalize(cross(P1.rgb-P0,P4.rgb-P0))*P1.a*P4.a;
 	vec3 N4 = normalize(cross(P2.rgb-P0,P3.rgb-P0))*P2.a*P3.a;
-	//vec3 N5 = normalize(cross(P5-P0,P7-P0));
-	//vec3 N6 = normalize(cross(P5-P0,P6-P0));
-	//vec3 N7 = normalize(cross(P8-P0,P7-P0));
-	//vec3 N8 = normalize(cross(P8-P0,P6-P0));
+
+	vec3 N5 = normalize(cross(P5.rgb-P0,P6.rgb-P0))*P5.a*P6.a;
+	vec3 N6 = normalize(cross(P5.rgb-P0,P8.rgb-P0))*P5.a*P8.a;
+	vec3 N7 = normalize(cross(P6.rgb-P0,P7.rgb-P0))*P6.a*P7.a;
+	vec3 N8 = normalize(cross(P8.rgb-P0,P7.rgb-P0))*P8.a*P7.a;
 	
-	vec3 N = normalize(N1-N3+N2-N4); //+N5+N6+N7+N8);
+	vec3 N = normalize(N1-N3+N2-N4+N5-N6+N7-N8);
 
 	vec3 uAmbientColor = vec3(0.2,0.2,0.2);
 	vec3 uPointLightingColor = vec3(1.0,0.8,0.8);
@@ -158,9 +186,9 @@ void main() {
 
    //gl_FragColor = vec4(nx,ny,nz,1.0);
 	if (myColour.a != 1.0) {
-		gl_FragColor = vec4(0.0,0.0,0.0,1.0);
+		gl_FragColor = vec4(44.0/255.0, 62.0/255.0, 80.0/255.0,1.0);
 	} else {
-		gl_FragColor = vec4(vec3(1.0,1.0,1.0) * lightWeighting, 1.0);
+		gl_FragColor = vec4(vec3(1.0,0.9,0.0) * lightWeighting, 1.0);
 	}
 }
 `, "fragment");
@@ -281,7 +309,7 @@ function setupGL(canvas, gl, program) {
   gl.viewport(0, 0, canvas.width, canvas.height);
 
   // Clear the canvas
-  gl.clearColor(0, 0, 0, 1.0);
+  gl.clearColor(44/255, 62/255, 80/255, 1.0);
   //gl.clear(gl.COLOR_BUFFER_BIT);
 
   // Tell it to use our program (pair of shaders)
@@ -439,7 +467,8 @@ function process(rays, q, vp, f, multiplier) {
 					nq.push(n[j]);
 					n[j].visited = true;
 					// Make sure neighbours are moved to correct location	
-					//n[j].moveTo(q[i].count-multiplier);
+					n[j].moveTo(q[i].count);
+					//n[j].reverseMarch(vp, f, 1);
 				}
 			}
 		}
@@ -518,7 +547,7 @@ function trace(output, f, options) {
 
 	seed(rays, q, sample);
 	var oq = q;
-	q = process(rays, q, vp, f, 1);
+	q = process(rays, q, vp, f, sample);
 	processResults(vp, oq);
 
 	// Sort the initial seed results?

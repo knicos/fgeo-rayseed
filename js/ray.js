@@ -56,6 +56,27 @@ Ray.prototype.march = function(vp, f, multiplier) {
 	return false;
 }
 
+Ray.prototype.reverseMarch = function(vp, f, multiplier) {
+	//this.visited = true;
+	while (this.count > 0) {
+		//console.log("RAY");
+		var res = f(this.x, this.y, this.z);
+		this.value = res;
+		if (res >= 0) {
+			// TODO Refine...
+			//this.refine(f)
+			return true;
+		}
+
+		this.x -= this.dx*multiplier;
+		this.y -= this.dy*multiplier;
+		this.z -= this.dz*multiplier;
+		this.count -= multiplier;
+	}
+	
+	return false;
+}
+
 /* March towards camera at finer steps until surface found */
 Ray.prototype.refine = function(f) {
 	let multiplier = 0.5;
