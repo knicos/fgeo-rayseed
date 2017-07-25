@@ -1,3 +1,6 @@
+const mat4 = require('gl-matrix').mat4;
+const vec3 = require('gl-matrix').vec3;
+
 function Viewport(fov, w, h, dres, bound) {
 	this.width = w;
 	this.height = h;

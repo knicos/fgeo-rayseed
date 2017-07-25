@@ -316,9 +316,9 @@ function reset(rays, vp, matrix) {
 		var py = ty * vp.fovtan;
 		tx = vp.bound[0];
 
-		let dirXY = up[0]*py-view[0];
-		let dirYY = up[1]*py-view[1];
-		let dirZY = up[2]*py-view[2];
+		var dirXY = up[0]*py-view[0];
+		var dirYY = up[1]*py-view[1];
+		var dirZY = up[2]*py-view[2];
 
 		for (var i=0; i<vp.width; i++) {
 			var n = l[i];
@@ -326,9 +326,9 @@ function reset(rays, vp, matrix) {
 			var px = tx * vp.fovtan * vp.aspect;
 			tx += dx;
 
-			let dirXX = (rightX*px+dirXY)*dres;
-			let dirYX = (rightY*px+dirYY)*dres;
-			let dirZX = (rightZ*px+dirZY)*dres;
+			var dirXX = (rightX*px+dirXY)*dres;
+			var dirYX = (rightY*px+dirYY)*dres;
+			var dirZX = (rightZ*px+dirZY)*dres;
 
 			n.setPosition(eyeX+dirXX*clip,eyeY+dirYX*clip,eyeZ+dirZX*clip);
 			n.setDeltas(dirXX,dirYX,dirZX);
@@ -390,12 +390,14 @@ function neighbours(rays, ray) {
 }
 
 function process(rays, q, vp, f, multiplier) {
-	var maxq = 0;
+	//var maxq = 0;
 	//var nq = [];
 	//for (var i=0; i<q.length; i++) {
-	while (q.length > 0) {
-		if (q.length > maxq) maxq = q.length;
-		var ray = q.pop();
+	var i=0;
+
+	while (i < q.length) {
+		//if (q.length > maxq) maxq = q.length;
+		var ray = q[i++];
 		var r = ray.march(vp, f, multiplier);
 		if (r) {
 			// Add all unvisited neighbours
@@ -411,7 +413,15 @@ function process(rays, q, vp, f, multiplier) {
 				}
 			}
 		}
+
+		/*q = q.sort(function(a,b) {
+			return a.count - b.count;
+		});*/
 	}
+
+	//console.log("MaxQ", maxq);
+
+	q.length = 0;
 
 	//return nq;
 }
@@ -511,13 +521,13 @@ function Tracer(output, options) {
 global.samples = 0;
 
 Tracer.prototype.render = function(f, matrix) {
-	console.time("trace");
+	//console.time("trace");
 
-	//console.time("make");
+	console.time("make");
 	var rays = this.rays;
 	reset(rays, this.viewport, matrix);
 	var q = this.q;
-	//console.timeEnd("make");
+	console.timeEnd("make");
 
 	//samples = 0;
 
@@ -531,7 +541,7 @@ Tracer.prototype.render = function(f, matrix) {
 	process(rays, q, this.viewport, f, 1); //this.sample);
 	//processResults(this.viewport, oq, this.odata);
 	renderTexture(this.viewport, rays, this.odata);
-	console.timeEnd("trace");
+	//console.timeEnd("trace");
 	//console.log("Samples per pixel", samples / (this.viewport.width*this.viewport.height));
 	render(this.gl, this.odata, this.viewport);
 

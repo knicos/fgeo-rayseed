@@ -18,6 +18,7 @@ function Ray(sx, sy) {
 	this.sx = sx;
 	this.sy = sy;
 	this.neighbours = null;
+	this.doreset = true;
 }
 
 /*Ray.prototype.checkClip = function(clip) {
@@ -53,52 +54,41 @@ Ray.prototype.moveTo = function(pos) {
 
 /* March deeper from current point until intersection. */
 Ray.prototype.march = function(vp, f, multiplier) {
-	//this.visited = true;
 	var count = 0;
 
 	const dxm = this.dx*multiplier;
 	const dym = this.dy*multiplier;
 	const dzm = this.dz*multiplier;
+	const maxcount = vp.count*1.0;
 
-	while (count < vp.count*1.0) {
-		//console.log("RAY");
-		var res = f(this.x, this.y, this.z);
-		//samples++;
-		
+	let x = this.x;
+	let y = this.y;
+	let z = this.z;
+
+	while (count < maxcount) {
+		var res = f(x, y, z);
+
 		if (res >= 0) {
+			this.x = x;
+			this.y = y;
+			this.z = z;
 			this.value = res;
 			this.count += count;
 			this.refine(f);
 			return true;
 		}
 
-		this.x += dxm;
-		this.y += dym;
-		this.z += dzm;
-		//this.count += multiplier;
+		x += dxm;
+		y += dym;
+		z += dzm;
 		count += multiplier;
 	}
-	
-	return false;
-}
 
-Ray.prototype.reverseMarch = function(vp, f, multiplier) {
-	//this.visited = true;
-	while (this.count > 0) {
-		//console.log("RAY");
-		var res = f(this.x, this.y, this.z);
-		this.value = res;
-		if (res >= 0) {
-			// TODO Refine...
-			this.refine(f)
-			return true;
-		}
-
-		this.x -= this.dx*multiplier;
-		this.y -= this.dy*multiplier;
-		this.z -= this.dz*multiplier;
-		this.count -= multiplier;
-	}
+	this.value = -1.0;
+	this.x = x;
+	this.y = y;
+	this.z = z;
+	this.count = maxcount+1;
 	
 	return false;
 }
@@ -454,9 +444,9 @@ function reset(rays, vp, matrix) {
 		var py = ty * vp.fovtan;
 		tx = vp.bound[0];
 
-		let dirXY = up[0]*py-view[0];
-		let dirYY = up[1]*py-view[1];
-		let dirZY = up[2]*py-view[2];
+		var dirXY = up[0]*py-view[0];
+		var dirYY = up[1]*py-view[1];
+		var dirZY = up[2]*py-view[2];
 
 		for (var i=0; i<vp.width; i++) {
 			var n = l[i];
@@ -464,9 +454,9 @@ function reset(rays, vp, matrix) {
 			var px = tx * vp.fovtan * vp.aspect;
 			tx += dx;
 
-			let dirXX = (rightX*px+dirXY)*dres;
-			let dirYX = (rightY*px+dirYY)*dres;
-			let dirZX = (rightZ*px+dirZY)*dres;
+			var dirXX = (rightX*px+dirXY)*dres;
+			var dirYX = (rightY*px+dirYY)*dres;
+			var dirZX = (rightZ*px+dirZY)*dres;
 
 			n.setPosition(eyeX+dirXX*clip,eyeY+dirYX*clip,eyeZ+dirZX*clip);
 			n.setDeltas(dirXX,dirYX,dirZX);
@@ -528,12 +518,14 @@ function neighbours(rays, ray) {
 }
 
 function process(rays, q, vp, f, multiplier) {
-	var maxq = 0;
+	//var maxq = 0;
 	//var nq = [];
 	//for (var i=0; i<q.length; i++) {
-	while (q.length > 0) {
-		if (q.length > maxq) maxq = q.length;
-		var ray = q.pop();
+	var i=0;
+
+	while (i < q.length) {
+		//if (q.length > maxq) maxq = q.length;
+		var ray = q[i++];
 		var r = ray.march(vp, f, multiplier);
 		if (r) {
 			// Add all unvisited neighbours
@@ -549,7 +541,15 @@ function process(rays, q, vp, f, multiplier) {
 				}
 			}
 		}
+
+		/*q = q.sort(function(a,b) {
+			return a.count - b.count;
+		});*/
 	}
+
+	//console.log("MaxQ", maxq);
+
+	q.length = 0;
 
 	//return nq;
 }
@@ -649,13 +649,13 @@ function Tracer(output, options) {
 global.samples = 0;
 
 Tracer.prototype.render = function(f, matrix) {
-	console.time("trace");
+	//console.time("trace");
 
-	//console.time("make");
+	console.time("make");
 	var rays = this.rays;
 	reset(rays, this.viewport, matrix);
 	var q = this.q;
-	//console.timeEnd("make");
+	console.timeEnd("make");
 
 	//samples = 0;
 
@@ -669,7 +669,7 @@ Tracer.prototype.render = function(f, matrix) {
 	process(rays, q, this.viewport, f, 1); //this.sample);
 	//processResults(this.viewport, oq, this.odata);
 	renderTexture(this.viewport, rays, this.odata);
-	console.timeEnd("trace");
+	//console.timeEnd("trace");
 	//console.log("Samples per pixel", samples / (this.viewport.width*this.viewport.height));
 	render(this.gl, this.odata, this.viewport);
 
@@ -712,6 +712,9 @@ Tracer.glmatrix = require("gl-matrix");
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 },{"./ray.js":2,"./viewport.js":4,"gl-matrix":5}],4:[function(require,module,exports){
+const mat4 = require('gl-matrix').mat4;
+const vec3 = require('gl-matrix').vec3;
+
 function Viewport(fov, w, h, dres, bound) {
 	this.width = w;
 	this.height = h;
@@ -733,7 +736,7 @@ function Viewport(fov, w, h, dres, bound) {
 module.exports = Viewport;
 
 
-},{}],5:[function(require,module,exports){
+},{"gl-matrix":5}],5:[function(require,module,exports){
 /**
  * @fileoverview gl-matrix - High performance matrix and vector operations
  * @author Brandon Jones

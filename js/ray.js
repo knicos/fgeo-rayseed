@@ -11,6 +11,7 @@ function Ray(sx, sy) {
 	this.sx = sx;
 	this.sy = sy;
 	this.neighbours = null;
+	this.doreset = true;
 }
 
 /*Ray.prototype.checkClip = function(clip) {
@@ -46,52 +47,41 @@ Ray.prototype.moveTo = function(pos) {
 
 /* March deeper from current point until intersection. */
 Ray.prototype.march = function(vp, f, multiplier) {
-	//this.visited = true;
 	var count = 0;
 
 	const dxm = this.dx*multiplier;
 	const dym = this.dy*multiplier;
 	const dzm = this.dz*multiplier;
+	const maxcount = vp.count*1.0;
 
-	while (count < vp.count*1.0) {
-		//console.log("RAY");
-		var res = f(this.x, this.y, this.z);
-		//samples++;
-		
+	let x = this.x;
+	let y = this.y;
+	let z = this.z;
+
+	while (count < maxcount) {
+		var res = f(x, y, z);
+
 		if (res >= 0) {
+			this.x = x;
+			this.y = y;
+			this.z = z;
 			this.value = res;
 			this.count += count;
 			this.refine(f);
 			return true;
 		}
 
-		this.x += dxm;
-		this.y += dym;
-		this.z += dzm;
-		//this.count += multiplier;
+		x += dxm;
+		y += dym;
+		z += dzm;
 		count += multiplier;
 	}
-	
-	return false;
-}
 
-Ray.prototype.reverseMarch = function(vp, f, multiplier) {
-	//this.visited = true;
-	while (this.count > 0) {
-		//console.log("RAY");
-		var res = f(this.x, this.y, this.z);
-		this.value = res;
-		if (res >= 0) {
-			// TODO Refine...
-			this.refine(f)
-			return true;
-		}
-
-		this.x -= this.dx*multiplier;
-		this.y -= this.dy*multiplier;
-		this.z -= this.dz*multiplier;
-		this.count -= multiplier;
-	}
+	this.value = -1.0;
+	this.x = x;
+	this.y = y;
+	this.z = z;
+	this.count = maxcount+1;
 	
 	return false;
 }
