@@ -446,7 +446,7 @@ function reset(rays, vp, matrix) {
 				right[0]*px+up[0]*py-view[0],
 				right[1]*px+up[1]*py-view[1],
 				right[2]*px+up[2]*py-view[2]);
-			vec3.normalize(cam,cam);
+			//vec3.normalize(cam,cam);
 
 			//vec3.normalize(cam,cam);
 			//if (matrix) vec3.transformMat4(cam, cam, matrix);
