@@ -5,10 +5,10 @@ Construit.fgeo = require('./js/tracer.js');
 
 
 },{"./js/tracer.js":3}],2:[function(require,module,exports){
-function Ray(x,y,z, sx, sy) {
-	this.x = x;
-	this.y = y;
-	this.z = z;
+function Ray(sx, sy) {
+	this.x = 0;
+	this.y = 0;
+	this.z = 0;
 	this.dx = 0;
 	this.dy = 0;
 	this.dz = 0.1;
@@ -31,6 +31,15 @@ Ray.prototype.setDeltas = function(dx,dy,dz) {
 	this.dx = dx;
 	this.dy = dy;
 	this.dz = dz;
+}
+
+Ray.prototype.setPosition = function(x,y,z) {
+	this.x = x;
+	this.y = y;
+	this.z = z;
+	this.count = 0;
+	this.value = -10000.0;
+	this.visited = false;
 }
 
 Ray.prototype.moveTo = function(pos) {
@@ -364,43 +373,81 @@ function render(gl, image, canvas) {
 	//console.log("RENDER", image);
 }
 
-
-function make(vp, matrix) {
+function make(vp) {
 	var rays = [];
-	var dres = vp.dres;
-	var dx = ((vp.bound[1] - vp.bound[0]) / vp.width) * vp.aspect;
-	var dy = (vp.bound[1] - vp.bound[0]) / vp.height;
-	var ox = ((vp.bound[1] - vp.bound[0]) * vp.aspect - (vp.bound[1] - vp.bound[0])) / 2;
-
-	var cam = vec3.create();
-
 
 	for (var j=0; j<vp.height; j++) {
 		var line = [];
-		rays.push(line);
 		for (var i=0; i<vp.width; i++) {
-			var x = vp.bound[0] + i*dx - ox;
-			var y = vp.bound[0] + j*dy;
+			var n = new Ray(i, j);
+			line.push(n);
+		}
+		rays.push(line);
+	}
 
-			vec3.set(cam, x,y,vp.nearClip);
-			if (matrix) vec3.transformMat4(cam, cam, matrix);
-			var n = new Ray(cam[0], cam[1], cam[2], i, j);
+	return rays;
+}
 
-			var px = ((vp.bound[1] - vp.bound[0]) * (i / vp.width) + vp.bound[0]) * vp.fovtan * vp.aspect;
-			var py = ((vp.bound[1] - vp.bound[0]) * (j / vp.height) + vp.bound[0]) * vp.fovtan;
+function reset(rays, vp, matrix) {
+	var dres = vp.dres;
+	var range = vp.bound[1] - vp.bound[0];
+	var dx = (range / vp.width) * vp.aspect;
+	var dy = range / vp.height;
+	var ox = (range * vp.aspect - range) / 2;
+	var startX = vp.bound[0];
+	var startY = vp.bound[0];
+	var startZ = 0;
+
+	var cam = vec3.create();
+	var cam2 = vec3.create();
+
+	vec3.set(cam2, 0,0,0);
+	if (matrix) vec3.transformMat4(cam2, cam2, matrix);
+
+	for (var j=0; j<vp.height; j++) {
+		for (var i=0; i<vp.width; i++) {
+			var n = rays[j][i];
+			/*var x = startX + i*dx - ox;
+			var y = startY + j*dy;
+			var z = startZ + */
+
+			var px = (range * (i / vp.width) + vp.bound[0]) * vp.fovtan * vp.aspect;
+			var py = (range * (j / vp.height) + vp.bound[0]) * vp.fovtan;
+
+			//vec3.normalize(cam,cam);
+
+			var x = cam2[0];
+			var y = cam2[1];
+			var z = cam2[2];
 
 			vec3.set(cam, px,py,1);
-			if (matrix) vec3.transformMat4(cam, cam, matrix);
 			vec3.normalize(cam,cam);
+			if (matrix) vec3.transformMat4(cam, cam, matrix);
+			vec3.subtract(cam,cam,cam2);
+			vec3.normalize(cam,cam);
+
+			x += cam[0]*dres*vp.count*vp.nearClip;
+			y += cam[1]*dres*vp.count*vp.nearClip;
+			z += cam[2]*dres*vp.count*vp.nearClip;
+
+			//vec3.set(cam, x,y,vp.nearClip);
+			//if (matrix) vec3.transformMat4(cam, cam, matrix);
+			//var n = new Ray(x, y, z, i, j);
+			n.setPosition(x,y,z);
+
+			//vec3.set(cam, px,py,1);
+			//if (matrix) vec3.transformMat4(cam, cam, matrix);
+			//vec3.normalize(cam,cam);
 
 			n.setDeltas(cam[0]*dres,cam[1]*dres,cam[2]*dres);
 
-			line.push(n);
+			//line.push(n);
 		}
+		//rays.push(line);
 	}
 	//parent.children = cells;
 
-	return rays;
+	//return rays;
 }
 
 
@@ -477,7 +524,7 @@ function process(rays, q, vp, f, multiplier) {
 	return nq;
 }
 
-function processResults(vp, rays) {
+function processResults(vp, rays, odata) {
 	if (rays.length == 0) return;
 
 	//var odata = idata.data;
@@ -508,66 +555,52 @@ function processResults(vp, rays) {
 	//ctx.putImageData(idata, 0, 0);
 }
 
-function trace(output, f, options) {
-	if (!options) options = {};
-	var dres = (options.depthResolution) ? options.depthResolution : 100;
-	//ctx = output.getContext('2d');
-	let gl = output.getContext("webgl");
-	let program = initShaders(gl);
-	setupGL(output, gl, program);
+function Tracer(output, options) {
+	this.options = options;
+	this.gl = output.getContext("webgl");
+	this.program = initShaders(this.gl);
 
-	odata = new Float32Array(output.width*output.height*4); //ctx.createImageData(output.width, output.height);
-	//for (var i=3; i<odata.length; i+=4) odata[i] = 255;
+	setupGL(output, this.gl, this.program);
+
 	var bound = (options.boundary) ? options.boundary : [-1,1];
 	var fov = (options.fov) ? options.fov : 45;
-	var sample = (options.sample) ? options.sample : 8;
-	var progressive = (options.progressive) ? options.progressive : false;
+	var dres = (options.depthResolution) ? options.depthResolution : 100;
 
-	/*ctx.fillStyle = "black";
-	ctx.fillRect(0,0,output.width,output.height);*/
+	this.sample = (options.sample) ? options.sample : 8;
+	this.progressive = (options.progressive) ? options.progressive : false;
+	this.width = output.width;
+	this.height = output.height;
+	this.viewport = new Viewport(fov, this.width, this.height, dres, bound);
 
-	//var gl = initGL(output);
-	
+	this.rays = make(this.viewport);
+}
 
-	//idata = ctx.getImageData(0,0,output.width, output.height);
-
-	//resize(bound, fov, f, (bound[1] - bound[0]) / dres, output.width, output.height);
-
-	swidth = output.width;
-	sheight = output.height;
-	var vp = new Viewport(fov, swidth, sheight, dres, bound);
-
-	console.log("Resize", output.width, output.height);
-	//console.log("Cells", cells);
-
+Tracer.prototype.render = function(f, matrix) {
 	console.time("trace");
 
-	var rays = make(vp, options.matrix);
+	this.odata = new Float32Array(output.width*output.height*4);
+
+	console.time("make");
+	var rays = this.rays;
+	reset(rays, this.viewport, matrix);
 	var q = [];
+	console.timeEnd("make");
 
-	seed(rays, q, sample);
+	seed(rays, q, this.sample);
 	var oq = q;
-	q = process(rays, q, vp, f, sample);
-	processResults(vp, oq);
+	q = process(rays, q, this.viewport, f, this.sample);
+	processResults(this.viewport, oq, this.odata);
 
-	// Sort the initial seed results?
-	/*q = q.sort(function(a,b) {
-		return b.count - a.count;
-	});*/
-
-	//console.log("Proc Seeds", q);
-
-	if (!progressive) {
+	if (!this.progressive) {
 		while (q.length > 0) {
 			var oq = q;
-			q = process(rays, q, vp, f, 1);
+			q = process(rays, q, this.viewport, f, 1);
 			//console.log("Res length",q.length);
-			processResults(vp, oq);
+			processResults(this.viewport, oq, this.odata);
 		}
 
 		console.timeEnd("trace");
-		//ctx.putImageData(idata, 0, 0);
-		render(gl, odata, output);
+		render(this.gl, this.odata, output);
 	} else {
 		function processLoop() {
 			var oq = q;
@@ -584,9 +617,10 @@ function trace(output, f, options) {
 	}
 }
 
-exports.trace = trace;
-exports.glmatrix = require("gl-matrix");
 
+
+module.exports = Tracer;
+Tracer.glmatrix = require("gl-matrix");
 
 
 },{"./ray.js":2,"./viewport.js":4,"gl-matrix":5}],4:[function(require,module,exports){
@@ -600,7 +634,7 @@ function Viewport(fov, w, h, dres, bound) {
 	this.aspect = (w / h);
 	this.aspect2 = (h / w);
 
-	this.nearClip = bound[0];
+	this.nearClip = 1.0;
 	this.farClip = bound[1];
 
 	this.dres = (bound[1] - bound[0]) / dres;

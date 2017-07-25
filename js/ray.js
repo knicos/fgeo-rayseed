@@ -1,7 +1,7 @@
-function Ray(x,y,z, sx, sy) {
-	this.x = x;
-	this.y = y;
-	this.z = z;
+function Ray(sx, sy) {
+	this.x = 0;
+	this.y = 0;
+	this.z = 0;
 	this.dx = 0;
 	this.dy = 0;
 	this.dz = 0.1;
@@ -24,6 +24,15 @@ Ray.prototype.setDeltas = function(dx,dy,dz) {
 	this.dx = dx;
 	this.dy = dy;
 	this.dz = dz;
+}
+
+Ray.prototype.setPosition = function(x,y,z) {
+	this.x = x;
+	this.y = y;
+	this.z = z;
+	this.count = 0;
+	this.value = -10000.0;
+	this.visited = false;
 }
 
 Ray.prototype.moveTo = function(pos) {
