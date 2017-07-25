@@ -10,6 +10,7 @@ function Ray(sx, sy) {
 	this.count = 0;
 	this.sx = sx;
 	this.sy = sy;
+	this.neighbours = null;
 }
 
 /*Ray.prototype.checkClip = function(clip) {

@@ -17,6 +17,7 @@ function Ray(sx, sy) {
 	this.count = 0;
 	this.sx = sx;
 	this.sy = sy;
+	this.neighbours = null;
 }
 
 /*Ray.prototype.checkClip = function(clip) {
@@ -388,6 +389,14 @@ function make(vp) {
 		rays.push(line);
 	}
 
+	for (var j=0; j<vp.height; j++) {
+		var line = rays[j];
+		for (var i=0; i<vp.width; i++) {
+			var n = line[i];
+			n.neighbours = neighbours(rays, n);
+		}
+	}
+
 	return rays;
 }
 
@@ -423,9 +432,17 @@ function reset(rays, vp, matrix) {
 	var tx = vp.bound[0];
 	var ty = vp.bound[0];
 
+	const eyeX = eye[0];
+	const eyeY = eye[1];
+	const eyeZ = eye[2];
+	const rightX = right[0];
+	const rightY = right[1];
+	const rightZ = right[2];
+
 	var clip = vp.count*vp.nearClip;
 
 	for (var j=0; j<vp.height; j++) {
+		var l = rays[j];
 		var py = ty * vp.fovtan;
 		tx = vp.bound[0];
 
@@ -434,27 +451,16 @@ function reset(rays, vp, matrix) {
 		let dirZY = up[2]*py-view[2];
 
 		for (var i=0; i<vp.width; i++) {
-			var n = rays[j][i];
+			var n = l[i];
 
 			var px = tx * vp.fovtan * vp.aspect;
 			tx += dx;
 
-			var x = eye[0];
-			var y = eye[1];
-			var z = eye[2];
+			let dirXX = (rightX*px+dirXY)*dres;
+			let dirYX = (rightY*px+dirYY)*dres;
+			let dirZX = (rightZ*px+dirZY)*dres;
 
-			let dirXX = (right[0]*px+dirXY)*dres;
-			let dirYX = (right[1]*px+dirYY)*dres;
-			let dirZX = (right[2]*px+dirZY)*dres;
-
-
-			x += dirXX*clip;
-			y += dirYX*clip;
-			z += dirZX*clip;
-
-			n.setPosition(x,y,z);
-
-
+			n.setPosition(eyeX+dirXX*clip,eyeY+dirYX*clip,eyeZ+dirZX*clip);
 			n.setDeltas(dirXX,dirYX,dirZX);
 		}
 
@@ -519,7 +525,7 @@ function process(rays, q, vp, f, multiplier) {
 		var r = q[i].march(vp, f, multiplier);
 		if (r) {
 			// Add all unvisited neighbours
-			var n = neighbours(rays, q[i]);
+			var n = q[i].neighbours; //neighbours(rays, q[i]);
 			//console.log("Neighbours", n);
 			for (var j=0; j<n.length; j++) {
 				if (n[j].visited === false || n[j].count > q[i].count) {
