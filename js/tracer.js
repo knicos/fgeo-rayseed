@@ -297,11 +297,6 @@ function reset(rays, vp, matrix) {
 	vec3.cross(up, right, view);
 	vec3.normalize(up,up);
 
-	console.log("RIGHT",right);
-	console.log("EYE", eye);
-	console.log("VIEW", view);
-	console.log("UP", up);
-
 	for (var j=0; j<vp.height; j++) {
 		for (var i=0; i<vp.width; i++) {
 			var n = rays[j][i];
@@ -321,7 +316,7 @@ function reset(rays, vp, matrix) {
 			vec3.set(cam, right[0]*px,right[1]*px,right[2]*px);
 			vec3.set(cam2, up[0]*py, up[1]*py, up[2]*py);
 			vec3.add(cam,cam,cam2);
-			vec3.set(cam2, view[0], view[1], view[2]);
+			vec3.set(cam2, -view[0], -view[1], -view[2]);
 			vec3.add(cam,cam,cam2);
 			vec3.normalize(cam,cam);
 
