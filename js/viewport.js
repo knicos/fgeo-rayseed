@@ -8,7 +8,7 @@ function Viewport(fov, w, h, dres, bound) {
 	this.aspect = (w / h);
 	this.aspect2 = (h / w);
 
-	this.nearClip = 1.0;
+	this.nearClip = 0.5;
 	this.farClip = bound[1];
 
 	this.dres = (bound[1] - bound[0]) / dres;

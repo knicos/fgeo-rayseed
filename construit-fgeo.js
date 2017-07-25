@@ -80,7 +80,7 @@ Ray.prototype.reverseMarch = function(vp, f, multiplier) {
 		this.value = res;
 		if (res >= 0) {
 			// TODO Refine...
-			//this.refine(f)
+			this.refine(f)
 			return true;
 		}
 
@@ -389,15 +389,6 @@ function make(vp) {
 }
 
 function reset(rays, vp, matrix) {
-	var dres = vp.dres;
-	var range = vp.bound[1] - vp.bound[0];
-	var dx = (range / vp.width) * vp.aspect;
-	var dy = range / vp.height;
-	var ox = (range * vp.aspect - range) / 2;
-	var startX = vp.bound[0];
-	var startY = vp.bound[0];
-	var startZ = 0;
-
 	var cam = vec3.create();
 	var cam2 = vec3.create();
 	var eye = vec3.create();
@@ -423,15 +414,27 @@ function reset(rays, vp, matrix) {
 	vec3.cross(up, right, view);
 	vec3.normalize(up,up);
 
+	var range = vp.bound[1] - vp.bound[0];
+	var dres = vp.dres;
+	var dx = (range * (1 / vp.width));
+	var dy = (range * (1 / vp.height));
+
+	var tx = vp.bound[0];
+	var ty = vp.bound[0];
+
 	for (var j=0; j<vp.height; j++) {
+		var py = ty * vp.fovtan;
+		tx = vp.bound[0];
+
 		for (var i=0; i<vp.width; i++) {
 			var n = rays[j][i];
 			/*var x = startX + i*dx - ox;
 			var y = startY + j*dy;
 			var z = startZ + */
 
-			var px = (range * (i / vp.width) + vp.bound[0]) * vp.fovtan * vp.aspect;
-			var py = (range * (j / vp.height) + vp.bound[0]) * vp.fovtan;
+			var px = tx * vp.fovtan * vp.aspect;
+
+			tx += dx;
 
 			//vec3.normalize(cam,cam);
 
@@ -439,11 +442,10 @@ function reset(rays, vp, matrix) {
 			var y = eye[1];
 			var z = eye[2];
 
-			vec3.set(cam, right[0]*px,right[1]*px,right[2]*px);
-			vec3.set(cam2, up[0]*py, up[1]*py, up[2]*py);
-			vec3.add(cam,cam,cam2);
-			vec3.set(cam2, -view[0], -view[1], -view[2]);
-			vec3.add(cam,cam,cam2);
+			vec3.set(cam,
+				right[0]*px+up[0]*py-view[0],
+				right[1]*px+up[1]*py-view[1],
+				right[2]*px+up[2]*py-view[2]);
 			vec3.normalize(cam,cam);
 
 			//vec3.normalize(cam,cam);
@@ -451,9 +453,9 @@ function reset(rays, vp, matrix) {
 			//vec3.subtract(cam,cam,cam2);
 			//vec3.normalize(cam,cam);
 
-			x += cam[0]; //*dres*vp.count*vp.nearClip;
-			y += cam[1]; //*dres*vp.count*vp.nearClip;
-			z += cam[2]; //*dres*vp.count*vp.nearClip;
+			x += cam[0]*dres*vp.count*vp.nearClip;
+			y += cam[1]*dres*vp.count*vp.nearClip;
+			z += cam[2]*dres*vp.count*vp.nearClip;
 
 			//vec3.set(cam, x,y,vp.nearClip);
 			//if (matrix) vec3.transformMat4(cam, cam, matrix);
@@ -469,6 +471,8 @@ function reset(rays, vp, matrix) {
 			//line.push(n);
 		}
 		//rays.push(line);
+
+		ty += dy;
 	}
 	//parent.children = cells;
 
@@ -613,7 +617,7 @@ Tracer.prototype.render = function(f, matrix) {
 
 	seed(rays, q, this.sample);
 	var oq = q;
-	q = process(rays, q, this.viewport, f, this.sample);
+	q = process(rays, q, this.viewport, f, 1); //this.sample);
 	processResults(this.viewport, oq, this.odata);
 
 	if (!this.progressive) {
@@ -627,13 +631,15 @@ Tracer.prototype.render = function(f, matrix) {
 		console.timeEnd("trace");
 		render(this.gl, this.odata, output);
 	} else {
+		var me = this;
+
 		function processLoop() {
 			var oq = q;
-			q = process(rays, q, vp, f, 1);
+			q = process(rays, q, me.viewport, f, 1);
 			//console.log("Res length",q.length);
-			processResults(vp, oq);
+			processResults(me.viewport, oq, me.odata);
 			//ctx.putImageData(idata, 0, 0);
-			render(gl, odata, output);
+			render(me.gl, me.odata, output);
 
 			if (q.length > 0) setTimeout(processLoop, 0);
 			else console.timeEnd("trace");
@@ -659,7 +665,7 @@ function Viewport(fov, w, h, dres, bound) {
 	this.aspect = (w / h);
 	this.aspect2 = (h / w);
 
-	this.nearClip = 1.0;
+	this.nearClip = 0.5;
 	this.farClip = bound[1];
 
 	this.dres = (bound[1] - bound[0]) / dres;

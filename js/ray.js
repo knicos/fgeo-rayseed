@@ -73,7 +73,7 @@ Ray.prototype.reverseMarch = function(vp, f, multiplier) {
 		this.value = res;
 		if (res >= 0) {
 			// TODO Refine...
-			//this.refine(f)
+			this.refine(f)
 			return true;
 		}
 
