@@ -46,20 +46,23 @@ Ray.prototype.moveTo = function(pos) {
 /* March deeper from current point until intersection. */
 Ray.prototype.march = function(vp, f, multiplier) {
 	//this.visited = true;
-	while (this.count < vp.count*1.0) {
+	var count = 0;
+
+	while (count < vp.count*1.0) {
 		//console.log("RAY");
 		var res = f(this.x, this.y, this.z);
 		this.value = res;
 		if (res >= 0) {
-			// TODO Refine...
-			this.refine(f)
+			this.count += count;
+			this.refine(f);
 			return true;
 		}
 
 		this.x += this.dx*multiplier;
 		this.y += this.dy*multiplier;
 		this.z += this.dz*multiplier;
-		this.count += multiplier;
+		//this.count += multiplier;
+		count += multiplier;
 	}
 	
 	return false;

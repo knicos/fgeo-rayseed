@@ -267,14 +267,12 @@ function reset(rays, vp, matrix) {
 	var cam2 = vec3.create();
 	var eye = vec3.create();
 
-
 	vec3.set(eye, 0,0,0);
 	if (matrix) vec3.transformMat4(eye, eye, matrix);
 
 	var up = vec3.create();
 	vec3.set(up, 0, 1, 0);
-	//if (matrix) vec3.transformMat4(up, up, matrix);
-	vec3.normalize(up,up);
+	//vec3.normalize(up,up);
 
 	var view = vec3.create();
 	var center = vec3.create();
@@ -296,61 +294,43 @@ function reset(rays, vp, matrix) {
 	var tx = vp.bound[0];
 	var ty = vp.bound[0];
 
+	var clip = vp.count*vp.nearClip;
+
 	for (var j=0; j<vp.height; j++) {
 		var py = ty * vp.fovtan;
 		tx = vp.bound[0];
 
+		let dirXY = up[0]*py-view[0];
+		let dirYY = up[1]*py-view[1];
+		let dirZY = up[2]*py-view[2];
+
 		for (var i=0; i<vp.width; i++) {
 			var n = rays[j][i];
-			/*var x = startX + i*dx - ox;
-			var y = startY + j*dy;
-			var z = startZ + */
 
 			var px = tx * vp.fovtan * vp.aspect;
-
 			tx += dx;
-
-			//vec3.normalize(cam,cam);
 
 			var x = eye[0];
 			var y = eye[1];
 			var z = eye[2];
 
-			vec3.set(cam,
-				right[0]*px+up[0]*py-view[0],
-				right[1]*px+up[1]*py-view[1],
-				right[2]*px+up[2]*py-view[2]);
-			//vec3.normalize(cam,cam);
+			let dirXX = (right[0]*px+dirXY)*dres;
+			let dirYX = (right[1]*px+dirYY)*dres;
+			let dirZX = (right[2]*px+dirZY)*dres;
 
-			//vec3.normalize(cam,cam);
-			//if (matrix) vec3.transformMat4(cam, cam, matrix);
-			//vec3.subtract(cam,cam,cam2);
-			//vec3.normalize(cam,cam);
 
-			x += cam[0]*dres*vp.count*vp.nearClip;
-			y += cam[1]*dres*vp.count*vp.nearClip;
-			z += cam[2]*dres*vp.count*vp.nearClip;
+			x += dirXX*clip;
+			y += dirYX*clip;
+			z += dirZX*clip;
 
-			//vec3.set(cam, x,y,vp.nearClip);
-			//if (matrix) vec3.transformMat4(cam, cam, matrix);
-			//var n = new Ray(x, y, z, i, j);
 			n.setPosition(x,y,z);
 
-			//vec3.set(cam, px,py,1);
-			//if (matrix) vec3.transformMat4(cam, cam, matrix);
-			//vec3.normalize(cam,cam);
 
-			n.setDeltas(cam[0]*dres,cam[1]*dres,cam[2]*dres);
-
-			//line.push(n);
+			n.setDeltas(dirXX,dirYX,dirZX);
 		}
-		//rays.push(line);
 
 		ty += dy;
 	}
-	//parent.children = cells;
-
-	//return rays;
 }
 
 
