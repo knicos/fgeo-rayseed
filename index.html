@@ -39,8 +39,10 @@
 		return Math.sqrt(length) - bailout;
 	}
 
+	let c = 1.8585;
+
 	function decocube(x,y,z) {
-		const c = 1.8585;
+		//const c = 1.8585;
 		//const c = 0.82;
 		let x2 = x*x;
 		let y2 = y*y;
@@ -129,15 +131,20 @@
 			progressive: false
 		});
 
-		var rotation = 90;
+		var rotation = 80;
+		var cdir = true;
 
 		redraw(0,0,-3.5,0,rotation,0);
 		setInterval(function() {
-			rotation += 5;
+			rotation += 2;
+			if (cdir) c -= 0.1;
+			else c += 0.1;
+			if (c <= 0.5) cdir = false;
+			else if (c >= 2.0) cdir = true;
 			redraw(0,0,-3.5,0,rotation,0);
 		}, 100);
 	}
 </script>
-<canvas width="1280" height="720" id="output"></canvas>
+<canvas width="320" height="240" id="output"></canvas>
 </body>
 </html>

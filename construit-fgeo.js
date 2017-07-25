@@ -532,11 +532,12 @@ function process(rays, q, vp, f, multiplier) {
 			var n = ray.neighbours; //neighbours(rays, q[i]);
 			//console.log("Neighbours", n);
 			for (var j=0; j<n.length; j++) {
-				if (n[j].visited === false || n[j].count > ray.count) {
-					q.push(n[j]);
-					n[j].visited = true;
+				var ni = n[j];
+				if (ni.visited === false || ni.count > ray.count) {
+					q.push(ni);
+					ni.visited = true;
 					// Make sure neighbours are moved to correct location	
-					n[j].moveTo(ray.count);
+					ni.moveTo(ray.count);
 					//n[j].reverseMarch(vp, f, 1);
 				}
 			}
@@ -649,13 +650,12 @@ function Tracer(output, options) {
 global.samples = 0;
 
 Tracer.prototype.render = function(f, matrix) {
-	//console.time("trace");
 
-	console.time("make");
+	//console.time("make");
 	var rays = this.rays;
 	reset(rays, this.viewport, matrix);
 	var q = this.q;
-	console.timeEnd("make");
+	//console.timeEnd("make");
 
 	//samples = 0;
 
@@ -666,10 +666,12 @@ Tracer.prototype.render = function(f, matrix) {
 	});*/
 
 	//var oq = q;
+	console.time("trace");
 	process(rays, q, this.viewport, f, 1); //this.sample);
+	console.timeEnd("trace");
 	//processResults(this.viewport, oq, this.odata);
 	renderTexture(this.viewport, rays, this.odata);
-	//console.timeEnd("trace");
+	
 	//console.log("Samples per pixel", samples / (this.viewport.width*this.viewport.height));
 	render(this.gl, this.odata, this.viewport);
 
