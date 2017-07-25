@@ -274,9 +274,33 @@ function reset(rays, vp, matrix) {
 
 	var cam = vec3.create();
 	var cam2 = vec3.create();
+	var eye = vec3.create();
 
-	vec3.set(cam2, 0,0,0);
-	if (matrix) vec3.transformMat4(cam2, cam2, matrix);
+
+	vec3.set(eye, 0,0,0);
+	if (matrix) vec3.transformMat4(eye, eye, matrix);
+
+	var up = vec3.create();
+	vec3.set(up, 0, 1, 0);
+	//if (matrix) vec3.transformMat4(up, up, matrix);
+	vec3.normalize(up,up);
+
+	var view = vec3.create();
+	var center = vec3.create();
+	vec3.set(center, 0,0,0);
+	vec3.set(view, eye[0], eye[1], eye[2]);
+	vec3.subtract(view,view,center);
+	vec3.normalize(view,view);
+	var right = vec3.create();
+	vec3.cross(right, view, up);
+	vec3.normalize(right,right);
+	vec3.cross(up, right, view);
+	vec3.normalize(up,up);
+
+	console.log("RIGHT",right);
+	console.log("EYE", eye);
+	console.log("VIEW", view);
+	console.log("UP", up);
 
 	for (var j=0; j<vp.height; j++) {
 		for (var i=0; i<vp.width; i++) {
@@ -290,19 +314,25 @@ function reset(rays, vp, matrix) {
 
 			//vec3.normalize(cam,cam);
 
-			var x = cam2[0];
-			var y = cam2[1];
-			var z = cam2[2];
+			var x = eye[0];
+			var y = eye[1];
+			var z = eye[2];
 
-			vec3.set(cam, px,py,1);
-			vec3.normalize(cam,cam);
-			if (matrix) vec3.transformMat4(cam, cam, matrix);
-			vec3.subtract(cam,cam,cam2);
+			vec3.set(cam, right[0]*px,right[1]*px,right[2]*px);
+			vec3.set(cam2, up[0]*py, up[1]*py, up[2]*py);
+			vec3.add(cam,cam,cam2);
+			vec3.set(cam2, view[0], view[1], view[2]);
+			vec3.add(cam,cam,cam2);
 			vec3.normalize(cam,cam);
 
-			x += cam[0]*dres*vp.count*vp.nearClip;
-			y += cam[1]*dres*vp.count*vp.nearClip;
-			z += cam[2]*dres*vp.count*vp.nearClip;
+			//vec3.normalize(cam,cam);
+			//if (matrix) vec3.transformMat4(cam, cam, matrix);
+			//vec3.subtract(cam,cam,cam2);
+			//vec3.normalize(cam,cam);
+
+			x += cam[0]; //*dres*vp.count*vp.nearClip;
+			y += cam[1]; //*dres*vp.count*vp.nearClip;
+			z += cam[2]; //*dres*vp.count*vp.nearClip;
 
 			//vec3.set(cam, x,y,vp.nearClip);
 			//if (matrix) vec3.transformMat4(cam, cam, matrix);
