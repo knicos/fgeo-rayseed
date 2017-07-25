@@ -49,19 +49,25 @@ Ray.prototype.march = function(vp, f, multiplier) {
 	//this.visited = true;
 	var count = 0;
 
+	const dxm = this.dx*multiplier;
+	const dym = this.dy*multiplier;
+	const dzm = this.dz*multiplier;
+
 	while (count < vp.count*1.0) {
 		//console.log("RAY");
 		var res = f(this.x, this.y, this.z);
-		this.value = res;
+		//samples++;
+		
 		if (res >= 0) {
+			this.value = res;
 			this.count += count;
 			this.refine(f);
 			return true;
 		}
 
-		this.x += this.dx*multiplier;
-		this.y += this.dy*multiplier;
-		this.z += this.dz*multiplier;
+		this.x += dxm;
+		this.y += dym;
+		this.z += dzm;
 		//this.count += multiplier;
 		count += multiplier;
 	}
@@ -99,6 +105,7 @@ Ray.prototype.refine = function(f) {
 		var ty = this.y - this.dy*multiplier;
 		var tz = this.z - this.dz*multiplier;
 		var res = f(tx, ty, tz);
+		//samples++;
 		if (res < 0) {
 			var total = this.value + Math.abs(res);
 			var lerp = this.value / total;

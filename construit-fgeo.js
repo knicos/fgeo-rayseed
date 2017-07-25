@@ -56,19 +56,25 @@ Ray.prototype.march = function(vp, f, multiplier) {
 	//this.visited = true;
 	var count = 0;
 
+	const dxm = this.dx*multiplier;
+	const dym = this.dy*multiplier;
+	const dzm = this.dz*multiplier;
+
 	while (count < vp.count*1.0) {
 		//console.log("RAY");
 		var res = f(this.x, this.y, this.z);
-		this.value = res;
+		//samples++;
+		
 		if (res >= 0) {
+			this.value = res;
 			this.count += count;
 			this.refine(f);
 			return true;
 		}
 
-		this.x += this.dx*multiplier;
-		this.y += this.dy*multiplier;
-		this.z += this.dz*multiplier;
+		this.x += dxm;
+		this.y += dym;
+		this.z += dzm;
 		//this.count += multiplier;
 		count += multiplier;
 	}
@@ -106,6 +112,7 @@ Ray.prototype.refine = function(f) {
 		var ty = this.y - this.dy*multiplier;
 		var tz = this.z - this.dz*multiplier;
 		var res = f(tx, ty, tz);
+		//samples++;
 		if (res < 0) {
 			var total = this.value + Math.abs(res);
 			var lerp = this.value / total;
@@ -128,6 +135,7 @@ module.exports = Ray;
 
 
 },{}],3:[function(require,module,exports){
+(function (global){
 const Ray = require('./ray.js');
 const Viewport = require('./viewport.js');
 const mat4 = require('gl-matrix').mat4;
@@ -520,26 +528,30 @@ function neighbours(rays, ray) {
 }
 
 function process(rays, q, vp, f, multiplier) {
-	var nq = [];
-	for (var i=0; i<q.length; i++) {
-		var r = q[i].march(vp, f, multiplier);
+	var maxq = 0;
+	//var nq = [];
+	//for (var i=0; i<q.length; i++) {
+	while (q.length > 0) {
+		if (q.length > maxq) maxq = q.length;
+		var ray = q.pop();
+		var r = ray.march(vp, f, multiplier);
 		if (r) {
 			// Add all unvisited neighbours
-			var n = q[i].neighbours; //neighbours(rays, q[i]);
+			var n = ray.neighbours; //neighbours(rays, q[i]);
 			//console.log("Neighbours", n);
 			for (var j=0; j<n.length; j++) {
-				if (n[j].visited === false || n[j].count > q[i].count) {
-					nq.push(n[j]);
+				if (n[j].visited === false || n[j].count > ray.count) {
+					q.push(n[j]);
 					n[j].visited = true;
 					// Make sure neighbours are moved to correct location	
-					n[j].moveTo(q[i].count);
+					n[j].moveTo(ray.count);
 					//n[j].reverseMarch(vp, f, 1);
 				}
 			}
 		}
 	}
 
-	return nq;
+	//return nq;
 }
 
 function processResults(vp, rays, odata) {
@@ -573,12 +585,48 @@ function processResults(vp, rays, odata) {
 	//ctx.putImageData(idata, 0, 0);
 }
 
+function renderTexture(vp, rays, odata) {
+	if (rays.length == 0) return;
+
+	//var odata = idata.data;
+
+	var scale = 255 / vp.count;
+
+	for (var i=0; i<rays.length; i++) {
+	let line = rays[i];
+	for (var j=0; j<line.length; j++) {
+		let ray = line[j];
+		var ix = ray.sx + ray.sy * vp.width;
+
+		if (ray.visited === false || ray.value < 0) {
+			odata[ix*4+3] = 0.0;
+			continue;
+		}
+
+		//var ix = results[i][0];
+		 //(results[i].cx+1)*(swidth/2) + (results[i].cy+1)*(sheight/2) * swidth;
+		/*var bw = Math.floor((vp.count - ray.count) * scale);
+		odata[ix*4] = bw;
+		odata[ix*4+1] = bw;
+		odata[ix*4+2] = bw;
+		odata[ix*4+3] = 255;*/
+
+		//odata[ix] = ray.count / vp.count; //(ray.z + 1.0) / 2.0;
+
+		odata[ix*4] = ray.x;
+		odata[ix*4+1] = ray.y;
+		odata[ix*4+2] = ray.z;
+		odata[ix*4+3] = 1.0;
+	}
+	}
+
+	//ctx.putImageData(idata, 0, 0);
+}
+
 function Tracer(output, options) {
 	this.options = options;
 	this.gl = output.getContext("webgl");
 	this.program = initShaders(this.gl);
-
-	setupGL(output, this.gl, this.program);
 
 	var bound = (options.boundary) ? options.boundary : [-1,1];
 	var fov = (options.fov) ? options.fov : 45;
@@ -586,39 +634,58 @@ function Tracer(output, options) {
 
 	this.sample = (options.sample) ? options.sample : 8;
 	this.progressive = (options.progressive) ? options.progressive : false;
+
 	this.width = output.width;
 	this.height = output.height;
 	this.viewport = new Viewport(fov, this.width, this.height, dres, bound);
 
+	setupGL(output, this.gl, this.program);
+
 	this.rays = make(this.viewport);
+	this.odata = new Float32Array(this.viewport.width*this.viewport.height*4);
+	this.q = [];
 }
+
+global.samples = 0;
 
 Tracer.prototype.render = function(f, matrix) {
 	console.time("trace");
 
-	this.odata = new Float32Array(output.width*output.height*4);
-
-	console.time("make");
+	//console.time("make");
 	var rays = this.rays;
 	reset(rays, this.viewport, matrix);
-	var q = [];
-	console.timeEnd("make");
+	var q = this.q;
+	//console.timeEnd("make");
+
+	//samples = 0;
 
 	seed(rays, q, this.sample);
-	var oq = q;
-	q = process(rays, q, this.viewport, f, 1); //this.sample);
-	processResults(this.viewport, oq, this.odata);
 
-	if (!this.progressive) {
+	/*q = q.sort(function(a,b) {
+		return a.count - b.count;
+	});*/
+
+	//var oq = q;
+	process(rays, q, this.viewport, f, 1); //this.sample);
+	//processResults(this.viewport, oq, this.odata);
+	renderTexture(this.viewport, rays, this.odata);
+	console.timeEnd("trace");
+	//console.log("Samples per pixel", samples / (this.viewport.width*this.viewport.height));
+	render(this.gl, this.odata, this.viewport);
+
+	/*if (!this.progressive) {
 		while (q.length > 0) {
 			var oq = q;
 			q = process(rays, q, this.viewport, f, 1);
 			//console.log("Res length",q.length);
-			processResults(this.viewport, oq, this.odata);
+			//processResults(this.viewport, oq, this.odata);
 		}
 
+		renderTexture(this.viewport, rays, this.odata);
+
 		console.timeEnd("trace");
-		render(this.gl, this.odata, output);
+		//console.log("Samples per pixel", samples / (this.viewport.width*this.viewport.height));
+		render(this.gl, this.odata, this.viewport);
 	} else {
 		var me = this;
 
@@ -634,7 +701,7 @@ Tracer.prototype.render = function(f, matrix) {
 			else console.timeEnd("trace");
 		}
 		setTimeout(processLoop,0);
-	}
+	}*/
 }
 
 
@@ -643,6 +710,7 @@ module.exports = Tracer;
 Tracer.glmatrix = require("gl-matrix");
 
 
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 },{"./ray.js":2,"./viewport.js":4,"gl-matrix":5}],4:[function(require,module,exports){
 function Viewport(fov, w, h, dres, bound) {
 	this.width = w;
