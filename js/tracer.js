@@ -224,6 +224,7 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
 
   // Create a texture.
   this.distTexture = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, this.distTexture);
 
   // Set the parameters so we can render any size image.
@@ -234,6 +235,7 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
 
 	 // Create a texture.
   this.colourTexture = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE1);
   gl.bindTexture(gl.TEXTURE_2D, this.colourTexture);
 
   // Set the parameters so we can render any size image.
@@ -241,6 +243,17 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+  // Tell it to use our program (pair of shaders)
+  gl.useProgram(program);
+
+  // lookup the sampler locations.
+  var u_image0Location = gl.getUniformLocation(program, "u_image0");
+  var u_image1Location = gl.getUniformLocation(program, "u_image1");
+ 
+  // set which texture units to render with.
+  gl.uniform1i(u_image0Location, 0);  // texture unit 0
+  gl.uniform1i(u_image1Location, 1);  // texture unit 1
 
   // lookup uniforms
   var resolutionLocation = gl.getUniformLocation(program, "u_resolution");
@@ -251,9 +264,6 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
   // Clear the canvas
   gl.clearColor(44/255, 62/255, 80/255, 1.0);
   //gl.clear(gl.COLOR_BUFFER_BIT);
-
-  // Tell it to use our program (pair of shaders)
-  gl.useProgram(program);
 
   // Turn on the position attribute
   gl.enableVertexAttribArray(positionLocation);
@@ -301,6 +311,9 @@ Tracer.prototype.generateColours = function(vp, gl, f, data) {
 		}
 	}
 
+	//console.log("GENERATE TEXTURES");
+
+    gl.activeTexture(gl.TEXTURE1);
 	gl.bindTexture(gl.TEXTURE_2D, this.colourTexture);
 	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, vp.width, vp.height, 0, gl.RGB, gl.UNSIGNED_BYTE, texture);
 }
@@ -310,6 +323,7 @@ Tracer.prototype.renderGL = function(gl, image, canvas) {
   var ext = gl.getExtension('OES_texture_float');
 
 	// Upload the image into the texture.
+  gl.activeTexture(gl.TEXTURE0);
 	gl.bindTexture(gl.TEXTURE_2D, this.distTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.FLOAT, image);
 
