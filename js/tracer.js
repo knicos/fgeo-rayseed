@@ -7,6 +7,51 @@ let rays = [];
 let swidth = 0;
 let sheight = 0;
 
+function Tracer(output, options) {
+	var me = this;
+
+	this.options = options;
+	this.gl = output.getContext("webgl");
+	this.program = initShaders(this.gl);
+	this.callback = undefined;
+	this.busy = false;
+
+	var bound = (options.boundary) ? options.boundary : [-1,1];
+	var fov = (options.fov) ? options.fov : 45;
+	var dres = (options.depthResolution) ? options.depthResolution : 100;
+
+	this.width = output.width;
+	this.height = output.height;
+
+	// Make worker
+	this.workers = [];
+	this.workers[0] = new Worker('fgeo-worker.js');
+
+	this.workers[0].addEventListener('message', function(e) {
+		if (e.data.cmd == "frame") {
+			me.busy = false;
+			if (me.texture) me.generateColours(output, me.gl, me.texture, e.data.data);
+			me.renderGL(me.gl, e.data.data, output);
+			if (me.callback) me.callback("done");
+		}
+	}, false);
+
+	this.workers[0].postMessage({
+		cmd: "viewport",
+		fov: fov,
+		width: this.width,
+		height: this.height,
+		dres: dres,
+		bound: bound
+	});
+
+	//this.viewport = new Viewport(fov, this.width, this.height, dres, bound);
+
+	// Send viewport message
+
+	this.setupGL(output, this.gl, this.program);
+}
+
 function initGL(canvas) {
 	// WebGL INIT
 	let gl = canvas.getContext("webgl");
@@ -24,7 +69,8 @@ function initShaders(gl) {
 precision mediump float;
 
 // our texture
-uniform sampler2D u_image;
+uniform sampler2D u_image0;
+uniform sampler2D u_image1;
 uniform highp vec2 u_resolution;
 
 // the texCoords passed in from the vertex shader.
@@ -34,17 +80,18 @@ void main() {
 	//vec2 offset = vec2(1.0 / 640.0, 1.0 / 480.0);
 	vec2 offset = 1.0 / u_resolution;
 
-	vec4 myColour = texture2D(u_image, v_texCoord);
+	vec4 myColour = texture2D(u_image0, v_texCoord);
+	vec4 myTColour = texture2D(u_image1, v_texCoord);
 	vec3 P0 = myColour.rgb;
-	vec4 P1 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y));
-	vec4 P2 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y));
-	vec4 P3 = texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y - offset.y));
-	vec4 P4 = texture2D(u_image, vec2(v_texCoord.x, v_texCoord.y + offset.y));
+	vec4 P1 = texture2D(u_image0, vec2(v_texCoord.x - offset.x, v_texCoord.y));
+	vec4 P2 = texture2D(u_image0, vec2(v_texCoord.x + offset.x, v_texCoord.y));
+	vec4 P3 = texture2D(u_image0, vec2(v_texCoord.x, v_texCoord.y - offset.y));
+	vec4 P4 = texture2D(u_image0, vec2(v_texCoord.x, v_texCoord.y + offset.y));
 
-	vec4 P5 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y - offset.y));
-	vec4 P6 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y - offset.y));
-	vec4 P7 = texture2D(u_image, vec2(v_texCoord.x + offset.x, v_texCoord.y + offset.y));
-	vec4 P8 = texture2D(u_image, vec2(v_texCoord.x - offset.x, v_texCoord.y + offset.y));
+	vec4 P5 = texture2D(u_image0, vec2(v_texCoord.x - offset.x, v_texCoord.y - offset.y));
+	vec4 P6 = texture2D(u_image0, vec2(v_texCoord.x + offset.x, v_texCoord.y - offset.y));
+	vec4 P7 = texture2D(u_image0, vec2(v_texCoord.x + offset.x, v_texCoord.y + offset.y));
+	vec4 P8 = texture2D(u_image0, vec2(v_texCoord.x - offset.x, v_texCoord.y + offset.y));
 
 	vec3 N1 = normalize(cross(P1.rgb-P0,P3.rgb-P0))*P1.a*P3.a;
 	vec3 N2 = normalize(cross(P2.rgb-P0,P4.rgb-P0))*P2.a*P4.a;
@@ -69,9 +116,9 @@ void main() {
 
    //gl_FragColor = vec4(nx,ny,nz,1.0);
 	if (myColour.a != 1.0) {
-		gl_FragColor = vec4(44.0/255.0, 62.0/255.0, 80.0/255.0,1.0);
+		gl_FragColor = vec4(1.0, 1.0, 1.0,1.0);
 	} else {
-		gl_FragColor = vec4(vec3(1.0,0.9,0.0) * lightWeighting, 1.0);
+		gl_FragColor = vec4(myTColour.rgb * lightWeighting, 1.0);
 	}
 }
 `, "fragment");
@@ -151,7 +198,7 @@ function setRectangle(gl, x, y, width, height) {
   ]), gl.STATIC_DRAW);
 }
 
-function setupGL(canvas, gl, program) {
+Tracer.prototype.setupGL = function(canvas, gl, program) {
 	var positionLocation = gl.getAttribLocation(program, "a_position");
   	var texcoordLocation = gl.getAttribLocation(program, "a_texCoord");
 
@@ -176,8 +223,18 @@ function setupGL(canvas, gl, program) {
   ]), gl.STATIC_DRAW);
 
   // Create a texture.
-  var texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
+  this.distTexture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, this.distTexture);
+
+  // Set the parameters so we can render any size image.
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+	 // Create a texture.
+  this.colourTexture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, this.colourTexture);
 
   // Set the parameters so we can render any size image.
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -232,11 +289,28 @@ function setupGL(canvas, gl, program) {
   gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
 }
 
-function render(gl, image, canvas) {
+Tracer.prototype.generateColours = function(vp, gl, f, data) {
+	var texture = new Uint8Array(vp.width*vp.height*3);
+	var l = data.length / 4;
+	for (var i=0; i<l; i++) {
+		if (data[i*4+3] > 0.0) {
+			var [r,g,b] = f(data[i*4],data[i*4+1],data[i*4+2]);
+			texture[i*3] = r;
+			texture[i*3+1] = g;
+			texture[i*3+2] = b;
+		}
+	}
+
+	gl.bindTexture(gl.TEXTURE_2D, this.colourTexture);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, vp.width, vp.height, 0, gl.RGB, gl.UNSIGNED_BYTE, texture);
+}
+
+Tracer.prototype.renderGL = function(gl, image, canvas) {
   gl.clear(gl.COLOR_BUFFER_BIT);
   var ext = gl.getExtension('OES_texture_float');
 
 	// Upload the image into the texture.
+	gl.bindTexture(gl.TEXTURE_2D, this.distTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.FLOAT, image);
 
   // Draw the rectangle.
@@ -453,50 +527,6 @@ function neighbours(rays, ray) {
 	//ctx.putImageData(idata, 0, 0);
 }*/
 
-function Tracer(output, options) {
-	var me = this;
-
-	this.options = options;
-	this.gl = output.getContext("webgl");
-	this.program = initShaders(this.gl);
-	this.callback = undefined;
-	this.busy = false;
-
-	var bound = (options.boundary) ? options.boundary : [-1,1];
-	var fov = (options.fov) ? options.fov : 45;
-	var dres = (options.depthResolution) ? options.depthResolution : 100;
-
-	this.width = output.width;
-	this.height = output.height;
-
-	// Make worker
-	this.workers = [];
-	this.workers[0] = new Worker('fgeo-worker.js');
-
-	this.workers[0].addEventListener('message', function(e) {
-		if (e.data.cmd == "frame") {
-			me.busy = false;
-			render(me.gl, e.data.data, output);
-			if (me.callback) me.callback("done");
-		}
-	}, false);
-
-	this.workers[0].postMessage({
-		cmd: "viewport",
-		fov: fov,
-		width: this.width,
-		height: this.height,
-		dres: dres,
-		bound: bound
-	});
-
-	//this.viewport = new Viewport(fov, this.width, this.height, dres, bound);
-
-	// Send viewport message
-
-	setupGL(output, this.gl, this.program);
-}
-
 global.samples = 0;
 
 Tracer.prototype.render = function(f, matrix, cb) {
@@ -513,6 +543,10 @@ Tracer.prototype.render = function(f, matrix, cb) {
 	this.callback = cb;
 	this.busy = true;
 	this.workers[0].postMessage({cmd: "render", matrix: mat4.clone(matrix)});
+}
+
+Tracer.prototype.setTexture = function(t) {
+	this.texture = t;
 }
 
 /*Tracer.prototype.render = function(f, matrix) {

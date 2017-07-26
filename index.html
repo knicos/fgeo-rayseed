@@ -128,7 +128,12 @@
 			depthResolution: 100,
 			fov: 45,
 			sample: 8,
-			progressive: false
+			progressive: false,
+			lod: 0.95
+		});
+
+		tracer.setTexture(function(x,y,z) {
+			return [Math.abs(x)%1,Math.abs(x)%1,Math.abs(x)%1];
 		});
 
 		var rotation = 80;
