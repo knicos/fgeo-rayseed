@@ -237,8 +237,9 @@ ClassicalNoise.prototype.noise = function(x, y, z) {
 		noise = new ClassicalNoise();
 
 		tracer.setTexture(function(x,y,z) {
-			var n = Math.floor(noise.noise(x*5,y*5,z*5));
-			return [n,n,n];
+			var n = (noise.noise(x*5,y*5,z*5)+1.0) / 2.0;
+			n = ((1 + Math.sin((x + n/2) * 50)) / 2)*255;
+			return [n,n*0.8,n*0.8];
 			//return [255,0,0];
 		});
 
