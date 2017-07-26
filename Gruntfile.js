@@ -15,7 +15,8 @@ module.exports = function (grunt) {
   grunt.initConfig({
 
 	browserify: {
-		'construit-fgeo.js': ['index.js']
+		'construit-fgeo.js': ['index.js'],
+		'fgeo-worker.js': ['js/worker.js']
 	}
   });
 

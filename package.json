@@ -4,14 +4,17 @@
   "description": "Functional Geometry Ray Tracer",
   "main": "index.js",
   "scripts": {
-    "test": "mocha test"
+    "test": "mocha test",
+    "devserver": "node ./bin/devserver.js"
   },
   "author": "Nicolas Pope",
   "license": "BSD-2-Clause",
   "devDependencies": {
     "browserify": "^14.4.0",
+    "connect": "^3.6.2",
     "grunt": "^1.0.1",
-    "grunt-browserify": "^5.0.0"
+    "grunt-browserify": "^5.0.0",
+    "serve-static": "^1.12.3"
   },
   "dependencies": {
     "gl-matrix": "^2.3.2"

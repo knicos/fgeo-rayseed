@@ -247,7 +247,7 @@ function render(gl, image, canvas) {
 	//console.log("RENDER", image);
 }
 
-function make(vp) {
+/*function make(vp) {
 	var rays = [];
 
 	for (var j=0; j<vp.height; j++) {
@@ -336,40 +336,13 @@ function reset(rays, vp, matrix) {
 
 		ty += dy;
 	}
-}
-
-
-/*function step(vp, func) {
-	var results = [];
-	var ncells = [];
-
-	for (var i=0; i<cells.length; i++) {
-		let cell = cells[i];
-		cell.test(func, vp);
-
-		if (cell.ray.lastres < 0) {
-			ctx.fillStyle = "black";
-			ctx.fillRect(cell.sx, cell.sy, cell.sizeX, cell.sizeY);
-		}
-
-		if (cell.doChildren) {
-			if (cell.sizeX > 1) {
-				results.push(cell);
-				ncells.push.apply(ncells, cell.makeChildren(vp, func));
-			}
-			ncells.push.apply(ncells, cell.getSibblingChildren(vp, func));
-		}
-	}
-
-	cells = ncells;
-	//console.log("Results", results);
-	//console.log("New Cells", cells);
-	return results;
 }*/
+
+
 
 var odata;
 
-function seed(rays, q, gap) {
+/*function seed(rays, q, gap) {
 	for (var y=0; y<rays.length; y+=gap) {
 		let line = rays[y];
 		for (var x=0; x<line.length; x+=gap) {
@@ -387,9 +360,9 @@ function neighbours(rays, ray) {
 	if (y > 0) n.push(rays[y-1][x]);
 	if (y < rays.length-1) n.push(rays[y+1][x]);
 	return n;
-}
+}*/
 
-function process(rays, q, vp, f, multiplier) {
+/*function process(rays, q, vp, f, multiplier) {
 	//var maxq = 0;
 	//var nq = [];
 	//for (var i=0; i<q.length; i++) {
@@ -414,10 +387,6 @@ function process(rays, q, vp, f, multiplier) {
 				}
 			}
 		}
-
-		/*q = q.sort(function(a,b) {
-			return a.count - b.count;
-		});*/
 	}
 
 	//console.log("MaxQ", maxq);
@@ -425,9 +394,9 @@ function process(rays, q, vp, f, multiplier) {
 	q.length = 0;
 
 	//return nq;
-}
+}*/
 
-function processResults(vp, rays, odata) {
+/*function processResults(vp, rays, odata) {
 	if (rays.length == 0) return;
 
 	//var odata = idata.data;
@@ -441,11 +410,7 @@ function processResults(vp, rays, odata) {
 
 		//var ix = results[i][0];
 		var ix = ray.sx + ray.sy * vp.width; //(results[i].cx+1)*(swidth/2) + (results[i].cy+1)*(sheight/2) * swidth;
-		/*var bw = Math.floor((vp.count - ray.count) * scale);
-		odata[ix*4] = bw;
-		odata[ix*4+1] = bw;
-		odata[ix*4+2] = bw;
-		odata[ix*4+3] = 255;*/
+
 
 		//odata[ix] = ray.count / vp.count; //(ray.z + 1.0) / 2.0;
 
@@ -456,9 +421,9 @@ function processResults(vp, rays, odata) {
 	}
 
 	//ctx.putImageData(idata, 0, 0);
-}
+}*/
 
-function renderTexture(vp, rays, odata) {
+/*function renderTexture(vp, rays, odata) {
 	if (rays.length == 0) return;
 
 	//var odata = idata.data;
@@ -476,14 +441,6 @@ function renderTexture(vp, rays, odata) {
 			continue;
 		}
 
-		//var ix = results[i][0];
-		 //(results[i].cx+1)*(swidth/2) + (results[i].cy+1)*(sheight/2) * swidth;
-		/*var bw = Math.floor((vp.count - ray.count) * scale);
-		odata[ix*4] = bw;
-		odata[ix*4+1] = bw;
-		odata[ix*4+2] = bw;
-		odata[ix*4+3] = 255;*/
-
 		//odata[ix] = ray.count / vp.count; //(ray.z + 1.0) / 2.0;
 
 		odata[ix*4] = ray.x;
@@ -494,34 +451,71 @@ function renderTexture(vp, rays, odata) {
 	}
 
 	//ctx.putImageData(idata, 0, 0);
-}
+}*/
 
 function Tracer(output, options) {
+	var me = this;
+
 	this.options = options;
 	this.gl = output.getContext("webgl");
 	this.program = initShaders(this.gl);
+	this.callback = undefined;
+	this.busy = false;
 
 	var bound = (options.boundary) ? options.boundary : [-1,1];
 	var fov = (options.fov) ? options.fov : 45;
 	var dres = (options.depthResolution) ? options.depthResolution : 100;
 
-	this.sample = (options.sample) ? options.sample : 8;
-	this.progressive = (options.progressive) ? options.progressive : false;
-
 	this.width = output.width;
 	this.height = output.height;
-	this.viewport = new Viewport(fov, this.width, this.height, dres, bound);
+
+	// Make worker
+	this.workers = [];
+	this.workers[0] = new Worker('fgeo-worker.js');
+
+	this.workers[0].addEventListener('message', function(e) {
+		if (e.data.cmd == "frame") {
+			me.busy = false;
+			render(me.gl, e.data.data, output);
+			if (me.callback) me.callback("done");
+		}
+	}, false);
+
+	this.workers[0].postMessage({
+		cmd: "viewport",
+		fov: fov,
+		width: this.width,
+		height: this.height,
+		dres: dres,
+		bound: bound
+	});
+
+	//this.viewport = new Viewport(fov, this.width, this.height, dres, bound);
+
+	// Send viewport message
 
 	setupGL(output, this.gl, this.program);
-
-	this.rays = make(this.viewport);
-	this.odata = new Float32Array(this.viewport.width*this.viewport.height*4);
-	this.q = [];
 }
 
 global.samples = 0;
 
-Tracer.prototype.render = function(f, matrix) {
+Tracer.prototype.render = function(f, matrix, cb) {
+	if (this.busy) return;
+
+	if (f !== this.f) {
+		// Send new f to worker(s)
+		console.log("Sending f:", f.toString());
+		this.workers[0].postMessage({cmd: "register", source: f.toString()});
+		this.f = f;
+	}
+
+	// Send render message
+	this.callback = cb;
+	this.busy = true;
+	this.workers[0].postMessage({cmd: "render", matrix: mat4.clone(matrix)});
+}
+
+/*Tracer.prototype.render = function(f, matrix) {
 
 	//console.time("make");
 	var rays = this.rays;
@@ -533,9 +527,7 @@ Tracer.prototype.render = function(f, matrix) {
 
 	seed(rays, q, this.sample);
 
-	/*q = q.sort(function(a,b) {
-		return a.count - b.count;
-	});*/
+
 
 	//var oq = q;
 	console.time("trace");
@@ -545,7 +537,7 @@ Tracer.prototype.render = function(f, matrix) {
 	renderTexture(this.viewport, rays, this.odata);
 	
 	//console.log("Samples per pixel", samples / (this.viewport.width*this.viewport.height));
-	render(this.gl, this.odata, this.viewport);
+	render(this.gl, this.odata, this.viewport);*/
 
 	/*if (!this.progressive) {
 		while (q.length > 0) {
@@ -576,7 +568,7 @@ Tracer.prototype.render = function(f, matrix) {
 		}
 		setTimeout(processLoop,0);
 	}*/
-}
+//}
 
 
 
