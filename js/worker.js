@@ -2,6 +2,8 @@ const Ray = require('./ray.js');
 const Viewport = require('./viewport.js');
 const mat4 = require('gl-matrix').mat4;
 const vec3 = require('gl-matrix').vec3;
+const ClassicalNoise = require('./noise.js');
+noise = new ClassicalNoise();
 
 function make(vp) {
 	var rays = [];
@@ -25,6 +27,22 @@ function make(vp) {
 
 	return rays;
 }
+
+function CSGUnion(a,b) {
+		return Math.max(a,b);
+	}
+
+	function CSGSubtract(a,b) {
+		return Math.min(a,-b);
+	}
+
+	function CSGSphere(x, center, R) {
+		var x0, x1, x2;
+		x0 = x[0] - center[0];
+		x1 = x[1] - center[1];
+		x2 = x[2] - center[2];
+		return (R*R) - (x0*x0) - (x1*x1) - (x2*x2);
+	}
 
 function reset(rays, vp, matrix) {
 	var cam = vec3.create();
@@ -127,6 +145,11 @@ function process(rays, q, vp, f, multiplier) {
 		var ray = q[i++];
 		var r = ray.march(vp, f, multiplier);
 		if (r) {
+			// Calculate colours
+			//if (tf) updateColour(ray);
+			// Update depth texture
+			//updateDepth(ray);
+
 			// Add all unvisited neighbours
 			var n = ray.neighbours; //neighbours(rays, q[i]);
 			//console.log("Neighbours", n);
@@ -185,22 +208,48 @@ function processResults(vp, rays, odata) {
 	//ctx.putImageData(idata, 0, 0);
 }
 
-function renderTexture(vp, rays, odata) {
+function updateDepth(ray) {
+	var ix = ray.sx + ray.sy * viewport.width;
+	odata[ix*4] = ray.x;
+	odata[ix*4+1] = ray.y;
+	odata[ix*4+2] = ray.z;
+	odata[ix*4+3] = 1.0;
+}
+
+function updateColour(ray) {
+	var i = ray.sx + ray.sy * viewport.width;
+	var [r,g,b] = tf(ray.x,ray.y,ray.z);
+	tdata[i*3] = r;
+	tdata[i*3+1] = g;
+	tdata[i*3+2] = b;
+}
+
+function renderTextures(vp, rays, odata, tdata) {
 	for (var i=0; i<rays.length; i++) {
 	let line = rays[i];
 	for (var j=0; j<line.length; j++) {
 		let ray = line[j];
-		var ix = ray.sx + ray.sy * vp.width;
 
 		if (ray.visited === false || ray.value < 0) {
-			odata[ix*4+3] = 0.0;
+			//odata[ix*4+3] = 0.0;
 			continue;
 		}
 
+		var ix = ray.sx + ray.sy * vp.width;
+
+		// Depth texture
 		odata[ix*4] = ray.x;
 		odata[ix*4+1] = ray.y;
 		odata[ix*4+2] = ray.z;
 		odata[ix*4+3] = 1.0;
+
+		// Calculate shadows here...
+
+		// Colour texture
+		var [r,g,b] = tf(ray.x,ray.y,ray.z);
+		tdata[ix*3] = r;
+		tdata[ix*3+1] = g;
+		tdata[ix*3+2] = b;
 	}
 	}
 }
@@ -210,9 +259,14 @@ var viewport = null;
 var q = [];
 var sample = 8;
 var f = null;
+var tf = null;
+var p = null;
+var odata = null;
+var tdata = null;
 
 function render(f, matrix) {
-	var odata = new Float32Array(viewport.width*viewport.height*4);
+	odata = new Float32Array(viewport.width*viewport.height*4);
+	tdata = new Uint8Array(viewport.width*viewport.height*3);
 
 	reset(rays, viewport, matrix);
 	seed(rays, q, sample);
@@ -221,9 +275,9 @@ function render(f, matrix) {
 	process(rays, q, viewport, f, 1);
 	console.timeEnd("trace");
 
-	renderTexture(viewport, rays, odata);
+	renderTextures(viewport, rays, odata, tdata);
 
-	postMessage({cmd: "frame", data: odata});
+	postMessage({cmd: "frame", depthTexture: odata, colourTexture: tdata});
 }
 
 onmessage = function(e) {
@@ -234,7 +288,8 @@ onmessage = function(e) {
 							e.data.dres, e.data.bound);
 						rays = make(viewport);
 						break;
-	case "register"	:	f = eval("("+e.data.source+")"); break;
+	case "register"	:	f = eval("("+e.data.source+")"); p = e.data.params; break;
+	case "material"	:	tf = eval("("+e.data.source+")"); break;
 	case "render"	:	render(f, e.data.matrix); break;
 	}
 }

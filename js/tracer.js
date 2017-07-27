@@ -30,8 +30,8 @@ function Tracer(output, options) {
 	this.workers[0].addEventListener('message', function(e) {
 		if (e.data.cmd == "frame") {
 			me.busy = false;
-			if (me.texture) me.generateColours(output, me.gl, me.texture, e.data.data);
-			me.renderGL(me.gl, e.data.data, output);
+			//if (me.texture) me.generateColours(output, me.gl, me.texture, e.data.data);
+			me.renderGL(me.gl, e.data.depthTexture, e.data.colourTexture, output);
 			if (me.callback) me.callback("done");
 		}
 	}, false);
@@ -106,7 +106,7 @@ void main() {
 	vec3 N = normalize(N1-N3+N2-N4+N5-N6+N7-N8);
 
 	vec3 uAmbientColor = vec3(0.2,0.2,0.2);
-	vec3 uPointLightingColor = vec3(1.0,0.8,0.8);
+	vec3 uPointLightingColor = vec3(1.0,1.0,1.0);
 
 	vec3 lightWeighting;
       vec3 lightDirection = normalize(vec3(1.0,0.2,-0.2)); //normalize(uPointLightingLocation - vPosition.xyz);
@@ -114,9 +114,8 @@ void main() {
       float directionalLightWeighting = max(dot(N, lightDirection), 0.0);
       lightWeighting = uAmbientColor + uPointLightingColor * directionalLightWeighting;
 
-   //gl_FragColor = vec4(nx,ny,nz,1.0);
 	if (myColour.a != 1.0) {
-		gl_FragColor = vec4(1.0, 1.0, 1.0,1.0);
+		gl_FragColor = vec4(1.0, 1.0, 1.0,0.0);
 	} else {
 		gl_FragColor = vec4(myTColour.rgb * lightWeighting, 1.0);
 	}
@@ -318,7 +317,7 @@ Tracer.prototype.generateColours = function(vp, gl, f, data) {
 	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, vp.width, vp.height, 0, gl.RGB, gl.UNSIGNED_BYTE, texture);
 }
 
-Tracer.prototype.renderGL = function(gl, image, canvas) {
+Tracer.prototype.renderGL = function(gl, image, colours, canvas) {
   gl.clear(gl.COLOR_BUFFER_BIT);
   var ext = gl.getExtension('OES_texture_float');
 
@@ -326,6 +325,11 @@ Tracer.prototype.renderGL = function(gl, image, canvas) {
   gl.activeTexture(gl.TEXTURE0);
 	gl.bindTexture(gl.TEXTURE_2D, this.distTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.FLOAT, image);
+
+
+	 gl.activeTexture(gl.TEXTURE1);
+	gl.bindTexture(gl.TEXTURE_2D, this.colourTexture);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, canvas.width, canvas.height, 0, gl.RGB, gl.UNSIGNED_BYTE, colours);
 
   // Draw the rectangle.
   var primitiveType = gl.TRIANGLES;
@@ -543,13 +547,13 @@ function neighbours(rays, ray) {
 
 global.samples = 0;
 
-Tracer.prototype.render = function(f, matrix, cb) {
+Tracer.prototype.render = function(f, p, matrix, cb) {
 	if (this.busy) return;
 
 	if (f !== this.f) {
 		// Send new f to worker(s)
 		console.log("Sending f:", f.toString());
-		this.workers[0].postMessage({cmd: "register", source: f.toString()});
+		this.workers[0].postMessage({cmd: "register", source: f.toString(), params: p});
 		this.f = f;
 	}
 
@@ -561,6 +565,7 @@ Tracer.prototype.render = function(f, matrix, cb) {
 
 Tracer.prototype.setTexture = function(t) {
 	this.texture = t;
+	this.workers[0].postMessage({cmd: "material", source: t.toString()});
 }
 
 /*Tracer.prototype.render = function(f, matrix) {

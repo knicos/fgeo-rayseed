@@ -49,6 +49,7 @@ Ray.prototype.moveTo = function(pos) {
 Ray.prototype.march = function(vp, f, multiplier) {
 	var count = 0;
 
+	//const lod = 0.1;
 	const dxm = this.dx*multiplier;
 	const dym = this.dy*multiplier;
 	const dzm = this.dz*multiplier;
@@ -59,7 +60,7 @@ Ray.prototype.march = function(vp, f, multiplier) {
 	let z = this.z;
 
 	while (count < maxcount) {
-		var res = f(x, y, z);
+		var res = f.call(this, x, y, z);
 
 		if (res >= 0) {
 			this.x = x;
@@ -71,9 +72,9 @@ Ray.prototype.march = function(vp, f, multiplier) {
 			return true;
 		}
 
-		x += dxm;
-		y += dym;
-		z += dzm;
+		x += dxm; //*(1.0+lod*count);
+		y += dym; //*(1.0+lod*count);
+		z += dzm; //*(1.0+lod*count);
 		count += multiplier;
 	}
 
@@ -88,29 +89,39 @@ Ray.prototype.march = function(vp, f, multiplier) {
 
 /* March towards camera at finer steps until surface found */
 Ray.prototype.refine = function(f) {
-	let multiplier = 0.5;
+	// LOD Experiment
+	//let normcount = this.count / 100;
+	let multiplier = 0.5; // + normcount*normcount*1.0;
+
+	const dx = this.dx*multiplier;
+	const dy = this.dy*multiplier;
+	const dz = this.dz*multiplier;
+	let tx = this.x;
+	let ty = this.y;
+	let tz = this.z;
+
+	let count = this.count;
+
 	//this.visited = true;
-	while (this.count > 0) {
-		var tx = this.x - this.dx*multiplier;
-		var ty = this.y - this.dy*multiplier;
-		var tz = this.z - this.dz*multiplier;
-		var res = f(tx, ty, tz);
+	while (count > 0) {
+		tx -= dx;
+		ty -= dy;
+		tz -= dz;
+		var res = f.call(this, tx, ty, tz);
 		//samples++;
 		if (res < 0) {
 			var total = this.value + Math.abs(res);
-			var lerp = this.value / total;
+			var lerp = Math.abs(res) / total;
 			multiplier = multiplier * lerp;
-			this.x -= this.dx*multiplier;
-			this.y -= this.dy*multiplier;
-			this.z -= this.dz*multiplier;
+			this.x = tx+dx*lerp;
+			this.y = ty+dy*lerp;
+			this.z = tz+dz*lerp;
+			this.count = count;
 			return;
 		}
 
 		this.value = res;
-		this.x = tx;
-		this.y = ty;
-		this.z = tz;
-		this.count -= multiplier;
+		count -= multiplier;
 	}
 }
 

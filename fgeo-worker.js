@@ -1,4 +1,109 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+	// Ported from Stefan Gustavson's java implementation
+// http://staffwww.itn.liu.se/~stegu/simplexnoise/simplexnoise.pdf
+// Read Stefan's excellent paper for details on how this code works.
+//
+// Sean McCullough banksean@gmail.com
+
+/**
+ * You can pass in a random number generator object if you like.
+ * It is assumed to have a random() method.
+ */
+var ClassicalNoise = function(r) { // Classic Perlin noise in 3D, for comparison 
+	if (r == undefined) r = Math;
+  this.grad3 = [[1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0], 
+                                 [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1], 
+                                 [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]]; 
+  this.p = [];
+  for (var i=0; i<256; i++) {
+	  this.p[i] = Math.floor(r.random()*256);
+  }
+  // To remove the need for index wrapping, double the permutation table length 
+  this.perm = []; 
+  for(var i=0; i<512; i++) {
+		this.perm[i]=this.p[i & 255];
+  }
+};
+
+ClassicalNoise.prototype.dot = function(g, x, y, z) { 
+    return g[0]*x + g[1]*y + g[2]*z; 
+};
+
+ClassicalNoise.prototype.mix = function(a, b, t) { 
+    return (1.0-t)*a + t*b; 
+};
+
+ClassicalNoise.prototype.fade = function(t) { 
+    return t*t*t*(t*(t*6.0-15.0)+10.0); 
+};
+
+  // Classic Perlin noise, 3D version 
+ClassicalNoise.prototype.noise = function(x, y, z) { 
+  // Find unit grid cell containing point 
+  var X = Math.floor(x); 
+  var Y = Math.floor(y); 
+  var Z = Math.floor(z); 
+  
+  // Get relative xyz coordinates of point within that cell 
+  x = x - X; 
+  y = y - Y; 
+  z = z - Z; 
+  
+  // Wrap the integer cells at 255 (smaller integer period can be introduced here) 
+  X = X & 255; 
+  Y = Y & 255; 
+  Z = Z & 255;
+  
+  // Calculate a set of eight hashed gradient indices 
+  var gi000 = this.perm[X+this.perm[Y+this.perm[Z]]] % 12; 
+  var gi001 = this.perm[X+this.perm[Y+this.perm[Z+1]]] % 12; 
+  var gi010 = this.perm[X+this.perm[Y+1+this.perm[Z]]] % 12; 
+  var gi011 = this.perm[X+this.perm[Y+1+this.perm[Z+1]]] % 12; 
+  var gi100 = this.perm[X+1+this.perm[Y+this.perm[Z]]] % 12; 
+  var gi101 = this.perm[X+1+this.perm[Y+this.perm[Z+1]]] % 12; 
+  var gi110 = this.perm[X+1+this.perm[Y+1+this.perm[Z]]] % 12; 
+  var gi111 = this.perm[X+1+this.perm[Y+1+this.perm[Z+1]]] % 12; 
+  
+  // The gradients of each corner are now: 
+  // g000 = grad3[gi000]; 
+  // g001 = grad3[gi001]; 
+  // g010 = grad3[gi010]; 
+  // g011 = grad3[gi011]; 
+  // g100 = grad3[gi100]; 
+  // g101 = grad3[gi101]; 
+  // g110 = grad3[gi110]; 
+  // g111 = grad3[gi111]; 
+  // Calculate noise contributions from each of the eight corners 
+  var n000= this.dot(this.grad3[gi000], x, y, z); 
+  var n100= this.dot(this.grad3[gi100], x-1, y, z); 
+  var n010= this.dot(this.grad3[gi010], x, y-1, z); 
+  var n110= this.dot(this.grad3[gi110], x-1, y-1, z); 
+  var n001= this.dot(this.grad3[gi001], x, y, z-1); 
+  var n101= this.dot(this.grad3[gi101], x-1, y, z-1); 
+  var n011= this.dot(this.grad3[gi011], x, y-1, z-1); 
+  var n111= this.dot(this.grad3[gi111], x-1, y-1, z-1); 
+  // Compute the fade curve value for each of x, y, z 
+  var u = this.fade(x); 
+  var v = this.fade(y); 
+  var w = this.fade(z); 
+   // Interpolate along x the contributions from each of the corners 
+  var nx00 = this.mix(n000, n100, u); 
+  var nx01 = this.mix(n001, n101, u); 
+  var nx10 = this.mix(n010, n110, u); 
+  var nx11 = this.mix(n011, n111, u); 
+  // Interpolate the four results along y 
+  var nxy0 = this.mix(nx00, nx10, v); 
+  var nxy1 = this.mix(nx01, nx11, v); 
+  // Interpolate the two last results along z 
+  var nxyz = this.mix(nxy0, nxy1, w); 
+
+  return nxyz; 
+};
+
+module.exports = ClassicalNoise;
+
+
+},{}],2:[function(require,module,exports){
 function Ray(sx, sy) {
 	this.x = 0;
 	this.y = 0;
@@ -50,6 +155,7 @@ Ray.prototype.moveTo = function(pos) {
 Ray.prototype.march = function(vp, f, multiplier) {
 	var count = 0;
 
+	//const lod = 0.1;
 	const dxm = this.dx*multiplier;
 	const dym = this.dy*multiplier;
 	const dzm = this.dz*multiplier;
@@ -60,7 +166,7 @@ Ray.prototype.march = function(vp, f, multiplier) {
 	let z = this.z;
 
 	while (count < maxcount) {
-		var res = f(x, y, z);
+		var res = f.call(this, x, y, z);
 
 		if (res >= 0) {
 			this.x = x;
@@ -72,9 +178,9 @@ Ray.prototype.march = function(vp, f, multiplier) {
 			return true;
 		}
 
-		x += dxm;
-		y += dym;
-		z += dzm;
+		x += dxm; //*(1.0+lod*count);
+		y += dym; //*(1.0+lod*count);
+		z += dzm; //*(1.0+lod*count);
 		count += multiplier;
 	}
 
@@ -89,36 +195,46 @@ Ray.prototype.march = function(vp, f, multiplier) {
 
 /* March towards camera at finer steps until surface found */
 Ray.prototype.refine = function(f) {
-	let multiplier = 0.5;
+	// LOD Experiment
+	//let normcount = this.count / 100;
+	let multiplier = 0.5; // + normcount*normcount*1.0;
+
+	const dx = this.dx*multiplier;
+	const dy = this.dy*multiplier;
+	const dz = this.dz*multiplier;
+	let tx = this.x;
+	let ty = this.y;
+	let tz = this.z;
+
+	let count = this.count;
+
 	//this.visited = true;
-	while (this.count > 0) {
-		var tx = this.x - this.dx*multiplier;
-		var ty = this.y - this.dy*multiplier;
-		var tz = this.z - this.dz*multiplier;
-		var res = f(tx, ty, tz);
+	while (count > 0) {
+		tx -= dx;
+		ty -= dy;
+		tz -= dz;
+		var res = f.call(this, tx, ty, tz);
 		//samples++;
 		if (res < 0) {
 			var total = this.value + Math.abs(res);
-			var lerp = this.value / total;
+			var lerp = Math.abs(res) / total;
 			multiplier = multiplier * lerp;
-			this.x -= this.dx*multiplier;
-			this.y -= this.dy*multiplier;
-			this.z -= this.dz*multiplier;
+			this.x = tx+dx*lerp;
+			this.y = ty+dy*lerp;
+			this.z = tz+dz*lerp;
+			this.count = count;
 			return;
 		}
 
 		this.value = res;
-		this.x = tx;
-		this.y = ty;
-		this.z = tz;
-		this.count -= multiplier;
+		count -= multiplier;
 	}
 }
 
 module.exports = Ray;
 
 
-},{}],2:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 const mat4 = require('gl-matrix').mat4;
 const vec3 = require('gl-matrix').vec3;
 
@@ -143,11 +259,13 @@ function Viewport(fov, w, h, dres, bound) {
 module.exports = Viewport;
 
 
-},{"gl-matrix":4}],3:[function(require,module,exports){
+},{"gl-matrix":5}],4:[function(require,module,exports){
 const Ray = require('./ray.js');
 const Viewport = require('./viewport.js');
 const mat4 = require('gl-matrix').mat4;
 const vec3 = require('gl-matrix').vec3;
+const ClassicalNoise = require('./noise.js');
+noise = new ClassicalNoise();
 
 function make(vp) {
 	var rays = [];
@@ -171,6 +289,22 @@ function make(vp) {
 
 	return rays;
 }
+
+function CSGUnion(a,b) {
+		return Math.max(a,b);
+	}
+
+	function CSGSubtract(a,b) {
+		return Math.min(a,-b);
+	}
+
+	function CSGSphere(x, center, R) {
+		var x0, x1, x2;
+		x0 = x[0] - center[0];
+		x1 = x[1] - center[1];
+		x2 = x[2] - center[2];
+		return (R*R) - (x0*x0) - (x1*x1) - (x2*x2);
+	}
 
 function reset(rays, vp, matrix) {
 	var cam = vec3.create();
@@ -273,6 +407,11 @@ function process(rays, q, vp, f, multiplier) {
 		var ray = q[i++];
 		var r = ray.march(vp, f, multiplier);
 		if (r) {
+			// Calculate colours
+			//if (tf) updateColour(ray);
+			// Update depth texture
+			//updateDepth(ray);
+
 			// Add all unvisited neighbours
 			var n = ray.neighbours; //neighbours(rays, q[i]);
 			//console.log("Neighbours", n);
@@ -331,22 +470,46 @@ function processResults(vp, rays, odata) {
 	//ctx.putImageData(idata, 0, 0);
 }
 
-function renderTexture(vp, rays, odata) {
+function updateDepth(ray) {
+	var ix = ray.sx + ray.sy * viewport.width;
+	odata[ix*4] = ray.x;
+	odata[ix*4+1] = ray.y;
+	odata[ix*4+2] = ray.z;
+	odata[ix*4+3] = 1.0;
+}
+
+function updateColour(ray) {
+	var i = ray.sx + ray.sy * viewport.width;
+	var [r,g,b] = tf(ray.x,ray.y,ray.z);
+	tdata[i*3] = r;
+	tdata[i*3+1] = g;
+	tdata[i*3+2] = b;
+}
+
+function renderTextures(vp, rays, odata, tdata) {
 	for (var i=0; i<rays.length; i++) {
 	let line = rays[i];
 	for (var j=0; j<line.length; j++) {
 		let ray = line[j];
-		var ix = ray.sx + ray.sy * vp.width;
 
 		if (ray.visited === false || ray.value < 0) {
-			odata[ix*4+3] = 0.0;
+			//odata[ix*4+3] = 0.0;
 			continue;
 		}
 
+		var ix = ray.sx + ray.sy * vp.width;
+
+		// Depth texture
 		odata[ix*4] = ray.x;
 		odata[ix*4+1] = ray.y;
 		odata[ix*4+2] = ray.z;
 		odata[ix*4+3] = 1.0;
+
+		// Colour texture
+		var [r,g,b] = tf(ray.x,ray.y,ray.z);
+		tdata[ix*3] = r;
+		tdata[ix*3+1] = g;
+		tdata[ix*3+2] = b;
 	}
 	}
 }
@@ -356,9 +519,14 @@ var viewport = null;
 var q = [];
 var sample = 8;
 var f = null;
+var tf = null;
+var p = null;
+var odata = null;
+var tdata = null;
 
 function render(f, matrix) {
-	var odata = new Float32Array(viewport.width*viewport.height*4);
+	odata = new Float32Array(viewport.width*viewport.height*4);
+	tdata = new Uint8Array(viewport.width*viewport.height*3);
 
 	reset(rays, viewport, matrix);
 	seed(rays, q, sample);
@@ -367,9 +535,9 @@ function render(f, matrix) {
 	process(rays, q, viewport, f, 1);
 	console.timeEnd("trace");
 
-	renderTexture(viewport, rays, odata);
+	renderTextures(viewport, rays, odata, tdata);
 
-	postMessage({cmd: "frame", data: odata});
+	postMessage({cmd: "frame", depthTexture: odata, colourTexture: tdata});
 }
 
 onmessage = function(e) {
@@ -380,12 +548,13 @@ onmessage = function(e) {
 							e.data.dres, e.data.bound);
 						rays = make(viewport);
 						break;
-	case "register"	:	f = eval("("+e.data.source+")"); break;
+	case "register"	:	f = eval("("+e.data.source+")"); p = e.data.params; break;
+	case "material"	:	tf = eval("("+e.data.source+")"); break;
 	case "render"	:	render(f, e.data.matrix); break;
 	}
 }
 
-},{"./ray.js":1,"./viewport.js":2,"gl-matrix":4}],4:[function(require,module,exports){
+},{"./noise.js":1,"./ray.js":2,"./viewport.js":3,"gl-matrix":5}],5:[function(require,module,exports){
 /**
  * @fileoverview gl-matrix - High performance matrix and vector operations
  * @author Brandon Jones
@@ -423,7 +592,7 @@ exports.quat = require("./gl-matrix/quat.js");
 exports.vec2 = require("./gl-matrix/vec2.js");
 exports.vec3 = require("./gl-matrix/vec3.js");
 exports.vec4 = require("./gl-matrix/vec4.js");
-},{"./gl-matrix/common.js":5,"./gl-matrix/mat2.js":6,"./gl-matrix/mat2d.js":7,"./gl-matrix/mat3.js":8,"./gl-matrix/mat4.js":9,"./gl-matrix/quat.js":10,"./gl-matrix/vec2.js":11,"./gl-matrix/vec3.js":12,"./gl-matrix/vec4.js":13}],5:[function(require,module,exports){
+},{"./gl-matrix/common.js":6,"./gl-matrix/mat2.js":7,"./gl-matrix/mat2d.js":8,"./gl-matrix/mat3.js":9,"./gl-matrix/mat4.js":10,"./gl-matrix/quat.js":11,"./gl-matrix/vec2.js":12,"./gl-matrix/vec3.js":13,"./gl-matrix/vec4.js":14}],6:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -495,7 +664,7 @@ glMatrix.equals = function(a, b) {
 
 module.exports = glMatrix;
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -933,7 +1102,7 @@ mat2.multiplyScalarAndAdd = function(out, a, b, scale) {
 
 module.exports = mat2;
 
-},{"./common.js":5}],7:[function(require,module,exports){
+},{"./common.js":6}],8:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -1404,7 +1573,7 @@ mat2d.equals = function (a, b) {
 
 module.exports = mat2d;
 
-},{"./common.js":5}],8:[function(require,module,exports){
+},{"./common.js":6}],9:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -2152,7 +2321,7 @@ mat3.equals = function (a, b) {
 
 module.exports = mat3;
 
-},{"./common.js":5}],9:[function(require,module,exports){
+},{"./common.js":6}],10:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -4290,7 +4459,7 @@ mat4.equals = function (a, b) {
 
 module.exports = mat4;
 
-},{"./common.js":5}],10:[function(require,module,exports){
+},{"./common.js":6}],11:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -4892,7 +5061,7 @@ quat.equals = vec4.equals;
 
 module.exports = quat;
 
-},{"./common.js":5,"./mat3.js":8,"./vec3.js":12,"./vec4.js":13}],11:[function(require,module,exports){
+},{"./common.js":6,"./mat3.js":9,"./vec3.js":13,"./vec4.js":14}],12:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -5481,7 +5650,7 @@ vec2.equals = function (a, b) {
 
 module.exports = vec2;
 
-},{"./common.js":5}],12:[function(require,module,exports){
+},{"./common.js":6}],13:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -6260,7 +6429,7 @@ vec3.equals = function (a, b) {
 
 module.exports = vec3;
 
-},{"./common.js":5}],13:[function(require,module,exports){
+},{"./common.js":6}],14:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -6871,4 +7040,4 @@ vec4.equals = function (a, b) {
 
 module.exports = vec4;
 
-},{"./common.js":5}]},{},[3]);
+},{"./common.js":6}]},{},[4]);
