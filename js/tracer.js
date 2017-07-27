@@ -109,7 +109,7 @@ void main() {
 	vec3 uPointLightingColor = vec3(1.0,1.0,1.0);
 
 	vec3 lightWeighting;
-      vec3 lightDirection = normalize(vec3(1.0,0.2,-0.2)); //normalize(uPointLightingLocation - vPosition.xyz);
+      vec3 lightDirection = normalize(vec3(1.0,0.4,-0.4)); //normalize(uPointLightingLocation - vPosition.xyz);
 
       float directionalLightWeighting = max(dot(N, lightDirection), 0.0);
       lightWeighting = uAmbientColor + uPointLightingColor * directionalLightWeighting;
