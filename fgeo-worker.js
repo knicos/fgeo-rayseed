@@ -505,6 +505,8 @@ function renderTextures(vp, rays, odata, tdata) {
 		odata[ix*4+2] = ray.z;
 		odata[ix*4+3] = 1.0;
 
+		// Calculate shadows here...
+
 		// Colour texture
 		var [r,g,b] = tf(ray.x,ray.y,ray.z);
 		tdata[ix*3] = r;
@@ -525,8 +527,8 @@ var odata = null;
 var tdata = null;
 
 function render(f, matrix) {
-	odata = new Float32Array(viewport.width*viewport.height*4);
-	tdata = new Uint8Array(viewport.width*viewport.height*3);
+	odata = new Float32Array(new ArrayBuffer(viewport.width*viewport.height*4*4));
+	tdata = new Uint8Array(new ArrayBuffer(viewport.width*viewport.height*3));
 
 	reset(rays, viewport, matrix);
 	seed(rays, q, sample);
@@ -537,7 +539,7 @@ function render(f, matrix) {
 
 	renderTextures(viewport, rays, odata, tdata);
 
-	postMessage({cmd: "frame", depthTexture: odata, colourTexture: tdata});
+	postMessage({cmd: "frame", depthTexture: odata, colourTexture: tdata},[odata.buffer,tdata.buffer]);
 }
 
 onmessage = function(e) {

@@ -265,8 +265,8 @@ var odata = null;
 var tdata = null;
 
 function render(f, matrix) {
-	odata = new Float32Array(viewport.width*viewport.height*4);
-	tdata = new Uint8Array(viewport.width*viewport.height*3);
+	odata = new Float32Array(new ArrayBuffer(viewport.width*viewport.height*4*4));
+	tdata = new Uint8Array(new ArrayBuffer(viewport.width*viewport.height*3));
 
 	reset(rays, viewport, matrix);
 	seed(rays, q, sample);
@@ -277,7 +277,7 @@ function render(f, matrix) {
 
 	renderTextures(viewport, rays, odata, tdata);
 
-	postMessage({cmd: "frame", depthTexture: odata, colourTexture: tdata});
+	postMessage({cmd: "frame", depthTexture: odata, colourTexture: tdata},[odata.buffer,tdata.buffer]);
 }
 
 onmessage = function(e) {
