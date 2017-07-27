@@ -218,7 +218,7 @@ function updateDepth(ray) {
 
 function updateColour(ray) {
 	var i = ray.sx + ray.sy * viewport.width;
-	var [r,g,b] = tf(ray.x,ray.y,ray.z);
+	var [r,g,b] = tf.call(ray,ray.x,ray.y,ray.z);
 	tdata[i*3] = r;
 	tdata[i*3+1] = g;
 	tdata[i*3+2] = b;
@@ -246,7 +246,7 @@ function renderTextures(vp, rays, odata, tdata) {
 		// Calculate shadows here...
 
 		// Colour texture
-		var [r,g,b] = tf(ray.x,ray.y,ray.z);
+		var [r,g,b] = tf.call(ray, ray.x,ray.y,ray.z);
 		tdata[ix*3] = r;
 		tdata[ix*3+1] = g;
 		tdata[ix*3+2] = b;
@@ -276,6 +276,24 @@ function render(f, matrix) {
 	console.timeEnd("trace");
 
 	renderTextures(viewport, rays, odata, tdata);
+	//if (shadows) {
+		// For each pixel, do a low res resample towards light
+		var l = viewport.width*viewport.height;
+		var light = vec3.create();
+		vec3.set(light, 1, 0.1, 1);
+		for (var i=0; i<l; i++) {
+			if (odata[i*4+3] > 0) {
+				// Do a shadow ray to light
+				var r = Ray.createFromTo(viewport, [odata[i*4],odata[i*4+1],odata[i*4+2]], light);
+				var d = r.distance(f, 1, viewport.count);
+				if (d >= 0) {
+					tdata[i*3] *= 0.7;
+					tdata[i*3+1] *= 0.7;
+					tdata[i*3+2] *= 0.7;
+				}
+			}
+		}
+	//}
 
 	postMessage({cmd: "frame", depthTexture: odata, colourTexture: tdata},[odata.buffer,tdata.buffer]);
 }

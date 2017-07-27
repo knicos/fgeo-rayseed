@@ -5,6 +5,9 @@ Construit.fgeo = require('./js/tracer.js');
 
 
 },{"./js/tracer.js":3}],2:[function(require,module,exports){
+const mat4 = require('gl-matrix').mat4;
+const vec3 = require('gl-matrix').vec3;
+
 function Ray(sx, sy) {
 	this.x = 0;
 	this.y = 0;
@@ -19,6 +22,21 @@ function Ray(sx, sy) {
 	this.sy = sy;
 	this.neighbours = null;
 	this.doreset = true;
+	this.attribute = 0;
+}
+
+Ray.createFromTo = function(vp, from, to) {
+	var dir = vec3.create();
+	vec3.subtract(dir, from, to);
+	vec3.normalize(dir,dir);
+	var ray = new Ray(0,0);
+	ray.dx = dir[0]*vp.dres;
+	ray.dy = dir[1]*vp.dres;
+	ray.dz = dir[2]*vp.dres;
+	ray.x = from[0]+ray.dx;
+	ray.y = from[1]+ray.dy;
+	ray.z = from[2]+ray.dz;
+	return ray;
 }
 
 /*Ray.prototype.checkClip = function(clip) {
@@ -52,6 +70,34 @@ Ray.prototype.moveTo = function(pos) {
 	this.count += multiplier;
 }
 
+Ray.prototype.distance = function(f, step, farclip) {
+	var count = 0;
+
+	//const lod = 0.1;
+	const dxm = this.dx*step;
+	const dym = this.dy*step;
+	const dzm = this.dz*step;
+
+	let x = this.x;
+	let y = this.y;
+	let z = this.z;
+
+	while (count < farclip) {
+		var res = f.call(this, x, y, z);
+
+		if (res >= 0) {
+			return count;
+		}
+
+		x += dxm; //*(1.0+lod*count);
+		y += dym; //*(1.0+lod*count);
+		z += dzm; //*(1.0+lod*count);
+		count += step;
+	}
+
+	return -1;
+}
+
 /* March deeper from current point until intersection. */
 Ray.prototype.march = function(vp, f, multiplier) {
 	var count = 0;
@@ -65,6 +111,7 @@ Ray.prototype.march = function(vp, f, multiplier) {
 	let x = this.x;
 	let y = this.y;
 	let z = this.z;
+	let a = [0];
 
 	while (count < maxcount) {
 		var res = f.call(this, x, y, z);
@@ -106,6 +153,7 @@ Ray.prototype.refine = function(f) {
 	let tx = this.x;
 	let ty = this.y;
 	let tz = this.z;
+	let dummy = {};
 
 	let count = this.count;
 
@@ -114,7 +162,7 @@ Ray.prototype.refine = function(f) {
 		tx -= dx;
 		ty -= dy;
 		tz -= dz;
-		var res = f.call(this, tx, ty, tz);
+		var res = f.call(dummy, tx, ty, tz);
 		//samples++;
 		if (res < 0) {
 			var total = this.value + Math.abs(res);
@@ -135,7 +183,7 @@ Ray.prototype.refine = function(f) {
 module.exports = Ray;
 
 
-},{}],3:[function(require,module,exports){
+},{"gl-matrix":5}],3:[function(require,module,exports){
 (function (global){
 const Ray = require('./ray.js');
 const Viewport = require('./viewport.js');
@@ -248,7 +296,8 @@ void main() {
 	vec3 uPointLightingColor = vec3(1.0,1.0,1.0);
 
 	vec3 lightWeighting;
-      vec3 lightDirection = normalize(vec3(1.0,0.2,-0.2)); //normalize(uPointLightingLocation - vPosition.xyz);
+	vec3 uPointLightingLocation = vec3(1.5,0.4,-1.5);
+      vec3 lightDirection = normalize(uPointLightingLocation - myColour.xyz);
 
       float directionalLightWeighting = max(dot(N, lightDirection), 0.0);
       lightWeighting = uAmbientColor + uPointLightingColor * directionalLightWeighting;

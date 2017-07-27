@@ -50,7 +50,10 @@
 		let dcube = 0.02 - (Math.pow(x2 + y2 - c, 2) + Math.pow(z2 - 1, 2)) *
 			(Math.pow(y2 + z2 - c, 2) + Math.pow(x2 - 1, 2)) *
 			(Math.pow(x2 + z2 - c, 2) + Math.pow(y2 - 1, 2));
-		return noise.noise(x*100,y*100,z*100)*0.005 + CSGUnion(dcube, CSGSphere([x,y,z],[0,0,0],1.1));			
+		var n = (noise.noise(x*40,y*40,z*40)+1.0) / 3.0;
+			n = ((1 + Math.sin((x + n/2) * 10)) / 2)*0.01;
+		this.attribute = n+dcube;
+		return CSGUnion(n + dcube, CSGSphere([x,y,z],[0,0,0],1.1));			
 	}
 
 	function CSGUnion(a,b) {
@@ -134,9 +137,9 @@
 		});
 
 		tracer.setTexture(function(x,y,z) {
-			var n = (noise.noise(x*30,y*30,z*30)+1.0) / 3.0;
-			n = ((1 + Math.sin((x + n/2) * 10)) / 2)*60 + 150;
-			return [n,n,n];
+			var n = (noise.noise(x*40,y*40,z*40)+1.0) / 2.0;
+			n = ((1 + Math.sin((x + n/2) * 10 + (y + n/2) * 10)) / 2)*60 + 150;
+			return (this.attribute >= 0) ? [n,n,n] : [255,0,0];
 		});
 
 		var rotation = 60;
