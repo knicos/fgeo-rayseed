@@ -271,11 +271,14 @@ function render(f, matrix) {
 	reset(rays, viewport, matrix);
 	seed(rays, q, sample);
 
-	console.time("trace");
+	console.time("shape");
 	process(rays, q, viewport, f, 1);
-	console.timeEnd("trace");
+	console.timeEnd("shape");
 
+	console.time("textures")
 	renderTextures(viewport, rays, odata, tdata);
+	console.timeEnd("textures");
+	console.time("shadows");
 	//if (shadows) {
 		// For each pixel, do a low res resample towards light
 		var l = viewport.width*viewport.height;
@@ -294,6 +297,11 @@ function render(f, matrix) {
 			}
 		}
 	//}
+	console.timeEnd("shadows");
+
+	// Next calculate surface normals
+
+	// Then generate reflection rays
 
 	postMessage({cmd: "frame", depthTexture: odata, colourTexture: tdata},[odata.buffer,tdata.buffer]);
 }
