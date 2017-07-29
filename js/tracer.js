@@ -394,7 +394,7 @@ Tracer.prototype.renderGL = function(gl, image, colours, shadow, canvas) {
 		shininess: 0.9,
 		location: [(1+1.5) / 2, (0.1+1.5) / 2, (1+1.5) / 2],
 		ambient: [0.5,0.5,0.5],
-		diffuse: [1.0,0.0,0.0],
+		diffuse: [0.8,0.8,0.8],
 		specular: [0.2,0.2,0.2]
 	}, shadow);
 }
