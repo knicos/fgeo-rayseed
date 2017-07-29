@@ -4,7 +4,205 @@ if (typeof Construit == "undefined") Construit = {};
 Construit.fgeo = require('./js/tracer.js');
 
 
-},{"./js/tracer.js":3}],2:[function(require,module,exports){
+},{"./js/tracer.js":6}],2:[function(require,module,exports){
+function getShader(gl, str, kind) {
+	var shader;
+	if (kind == "fragment") {
+		shader = gl.createShader(gl.FRAGMENT_SHADER);
+	} else if (kind == "vertex") {
+		shader = gl.createShader(gl.VERTEX_SHADER);
+	} else {
+		return null;
+	}
+
+	gl.shaderSource(shader, str);
+	gl.compileShader(shader);
+
+	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+		alert(gl.getShaderInfoLog(shader));
+		return null;
+	}
+
+	return shader;
+}
+
+function activateBuffer(gl, location, buffer) {
+	 gl.enableVertexAttribArray(location);
+	gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+	// Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
+  var size = 2;          // 2 components per iteration
+  var type = gl.FLOAT;   // the data is 32bit floats
+  var normalize = false; // don't normalize the data
+  var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+  var offset = 0;        // start at the beginning of the buffer
+  gl.vertexAttribPointer(
+      location, size, type, normalize, stride, offset);
+}
+
+function anyResolutionTexture(gl) {
+	// Set the parameters so we can render any size image.
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+}
+
+exports.getShader = getShader;
+exports.anyResolutionTexture = anyResolutionTexture;
+exports.activateBuffer = activateBuffer;
+
+
+},{}],3:[function(require,module,exports){
+const GL = require('./gl.js');
+
+function initShaders(gl) {
+	let fragmentShader = GL.getShader(gl, `
+precision mediump float;
+
+// our texture
+uniform sampler2D u_image0;
+
+uniform highp vec2 u_resolution;
+uniform vec3 u_eye;
+
+// the texCoords passed in from the vertex shader.
+varying vec2 v_texCoord;
+
+void main() {
+	//vec2 offset = vec2(1.0 / 640.0, 1.0 / 480.0);
+	vec2 offset = 1.0 / u_resolution;
+
+	vec4 myColour = texture2D(u_image0, v_texCoord);
+	vec3 P0 = myColour.rgb;
+
+	//Left
+	vec4 P1 = texture2D(u_image0, vec2(v_texCoord.x - offset.x, v_texCoord.y));
+	//Right
+	vec4 P2 = texture2D(u_image0, vec2(v_texCoord.x + offset.x, v_texCoord.y));
+	//Top
+	vec4 P3 = texture2D(u_image0, vec2(v_texCoord.x, v_texCoord.y - offset.y));
+	//Bottom
+	vec4 P4 = texture2D(u_image0, vec2(v_texCoord.x, v_texCoord.y + offset.y));
+
+	vec4 P5 = texture2D(u_image0, vec2(v_texCoord.x - offset.x, v_texCoord.y - offset.y));
+	vec4 P6 = texture2D(u_image0, vec2(v_texCoord.x + offset.x, v_texCoord.y - offset.y));
+	vec4 P7 = texture2D(u_image0, vec2(v_texCoord.x + offset.x, v_texCoord.y + offset.y));
+	vec4 P8 = texture2D(u_image0, vec2(v_texCoord.x - offset.x, v_texCoord.y + offset.y));
+
+	vec3 N1 = (cross(P1.rgb-P0,P3.rgb-P0))*P1.a*P3.a;
+	vec3 N2 = (cross(P2.rgb-P0,P4.rgb-P0))*P2.a*P4.a;
+	vec3 N3 = (cross(P4.rgb-P0,P1.rgb-P0))*P1.a*P4.a;
+	vec3 N4 = (cross(P3.rgb-P0,P2.rgb-P0))*P2.a*P3.a;
+
+	vec3 N5 = (cross(P5.rgb-P0,P6.rgb-P0))*P5.a*P6.a;
+	vec3 N6 = (cross(P8.rgb-P0,P5.rgb-P0))*P5.a*P8.a;
+	vec3 N7 = (cross(P6.rgb-P0,P7.rgb-P0))*P6.a*P7.a;
+	vec3 N8 = (cross(P7.rgb-P0,P8.rgb-P0))*P8.a*P7.a;
+	
+	//vec3 N = normalize(N1+N3+N2+N4+N5+N6+N7+N8);
+	vec3 N = normalize(N1+N3+N2+N4+N5+N6+N7+N8);
+	if (dot(N,normalize(u_eye)) < 0.0) N = -N;
+
+	gl_FragColor = vec4((N+1.0) / 2.0, 1.0);
+}
+`, "fragment");
+
+	let vertexShader = GL.getShader(gl, `
+attribute vec2 a_position;
+attribute vec2 a_texCoord;
+
+uniform vec2 u_resolution;
+
+varying vec2 v_texCoord;
+
+void main() {
+   // convert the rectangle from pixels to 0.0 to 1.0
+   vec2 zeroToOne = a_position / u_resolution;
+
+   // convert from 0->1 to 0->2
+   vec2 zeroToTwo = zeroToOne * 2.0;
+
+   // convert from 0->2 to -1->+1 (clipspace)
+   vec2 clipSpace = zeroToTwo - 1.0;
+
+   gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
+
+   // pass the texCoord to the fragment shader
+   // The GPU will interpolate this value between points.
+   v_texCoord = a_texCoord;
+}
+`, "vertex");
+	
+	let shaderProgram = gl.createProgram();
+    gl.attachShader(shaderProgram, vertexShader);
+    gl.attachShader(shaderProgram, fragmentShader);
+    gl.linkProgram(shaderProgram);
+
+    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+      alert("Could not initialise shaders");
+    }
+
+    //gl.useProgram(shaderProgram);
+	return shaderProgram;
+}
+
+function Normals(gl, viewport) {
+	this.framebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+    this.framebuffer.width = viewport.width;
+    this.framebuffer.height = viewport.height;
+
+	this.texture = gl.createTexture();
+	gl.bindTexture(gl.TEXTURE_2D, this.texture);
+	GL.anyResolutionTexture(gl);
+	gl.getExtension('OES_texture_float');
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.framebuffer.width, this.framebuffer.height, 0, gl.RGBA, gl.FLOAT, null);
+	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texture, 0);
+
+	gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+	this.gl = gl;
+	this.width = viewport.width;
+	this.height = viewport.height;
+
+	this.program = initShaders(gl);
+
+	this.u_resolution = gl.getUniformLocation(this.program, "u_resolution");
+	this.u_eye = gl.getUniformLocation(this.program, "u_eye");
+	this.positionLocation = gl.getAttribLocation(this.program, "a_position");
+  	this.texcoordLocation = gl.getAttribLocation(this.program, "a_texCoord");
+}
+
+Normals.prototype.preRender = function(positionBuffer, texcoordBuffer) {
+	this.gl.useProgram(this.program);
+	GL.activateBuffer(this.gl, this.positionLocation, positionBuffer);
+	GL.activateBuffer(this.gl, this.texcoordLocation, texcoordBuffer);
+}
+
+Normals.prototype.render = function(eye) {
+	this.gl.uniform2f(this.u_resolution, this.width, this.height);
+	this.gl.uniform3f(this.u_eye, eye[0], eye[1], eye[2]);
+
+	this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.framebuffer);
+	//this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+
+	// Draw the rectangle.
+	var primitiveType = this.gl.TRIANGLES;
+	var offset = 0;
+	var count = 6;
+	this.gl.drawArrays(primitiveType, offset, count);
+
+	this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
+
+	this.gl.activeTexture(this.gl.TEXTURE1);
+	this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
+}
+
+module.exports = Normals;
+
+
+},{"./gl.js":2}],4:[function(require,module,exports){
 const mat4 = require('gl-matrix').mat4;
 const vec3 = require('gl-matrix').vec3;
 
@@ -23,6 +221,68 @@ function Ray(sx, sy) {
 	this.neighbours = null;
 	this.doreset = true;
 	this.attribute = 0;
+	this.nx = 0.0;
+	this.ny = 0.0;
+	this.nz = 0.0;
+}
+
+Ray.distance = function(pos, dir, f, step, farclip) {
+	var count = 0;
+
+	//const lod = 0.1;
+	const dxm = dir[0]*step;
+	const dym = dir[1]*step;
+	const dzm = dir[2]*step;
+
+	let x = pos[0];
+	let y = pos[1];
+	let z = pos[2];
+
+	while (count < farclip) {
+		var res = f.call(null, x, y, z);
+
+		if (res >= 0) {
+			return count;
+		}
+
+		x += dxm; //*(1.0+lod*count);
+		y += dym; //*(1.0+lod*count);
+		z += dzm; //*(1.0+lod*count);
+		count += step;
+	}
+
+	return -1;
+}
+
+Ray.intersection = function(out, oix, start, six, dir, dix, f, step, farclip) {
+	var count = 0;
+
+	//const lod = 0.1;
+	const dxm = dir[dix]*step;
+	const dym = dir[dix+1]*step;
+	const dzm = dir[dix+2]*step;
+
+	let x = start[six];
+	let y = start[six+1];
+	let z = start[six+2];
+
+	while (count < farclip) {
+		x += dxm;
+		y += dym;
+		z += dzm;
+		count += step;
+
+		var res = f.call(null, x, y, z);
+
+		if (res >= 0) {
+			out[oix] = x;
+			out[oix+1] = y;
+			out[oix+2] = z;
+			return true;
+		}
+	}
+
+	return false;
 }
 
 Ray.createFromTo = function(vp, from, to) {
@@ -183,12 +443,157 @@ Ray.prototype.refine = function(f) {
 module.exports = Ray;
 
 
-},{"gl-matrix":5}],3:[function(require,module,exports){
+},{"gl-matrix":8}],5:[function(require,module,exports){
+const GL = require('./gl.js');
+
+function initShaders(gl) {
+	let fragmentShader = GL.getShader(gl, `
+precision mediump float;
+
+// our texture
+uniform sampler2D u_image0;
+uniform sampler2D u_image1;
+uniform sampler2D u_image2;
+
+uniform vec3 u_eye;
+uniform vec3 u_ambient;
+uniform vec3 u_specular;
+uniform vec3 u_diffuse;
+uniform float u_shininess;
+uniform vec3 u_lightlocation;
+
+// the texCoords passed in from the vertex shader.
+varying vec2 v_texCoord;
+
+void main() {
+	vec4 posSample = texture2D(u_image0, v_texCoord);
+	vec3 position = posSample.rgb;
+	float shadow = 1.0 - texture2D(u_image2, v_texCoord).r;	
+	vec3 N = texture2D(u_image1, vec2(v_texCoord.x,1.0-v_texCoord.y)).rgb * 2.0 - 1.0;
+
+	vec3 lightWeighting;
+
+	vec3 lightDirection = -normalize(u_lightlocation - position);
+	vec3 E = normalize(u_eye - position);
+	vec3 R = normalize(-reflect(lightDirection,N));
+
+	float diffuseWeight = max(dot(N, lightDirection), 0.0)*shadow;
+	float specWeight = pow(max(dot(R,E),0.0),0.3*u_shininess)*shadow;
+
+      lightWeighting = u_diffuse * diffuseWeight +
+		clamp(specWeight * u_specular, 0.0,1.0);
+
+	gl_FragColor = vec4(lightWeighting,1.0);
+}
+`, "fragment");
+
+	let vertexShader = GL.getShader(gl, `
+attribute vec2 a_position;
+attribute vec2 a_texCoord;
+
+uniform vec2 u_resolution;
+
+varying vec2 v_texCoord;
+
+void main() {
+   // convert the rectangle from pixels to 0.0 to 1.0
+   vec2 zeroToOne = a_position / u_resolution;
+
+   // convert from 0->1 to 0->2
+   vec2 zeroToTwo = zeroToOne * 2.0;
+
+   // convert from 0->2 to -1->+1 (clipspace)
+   vec2 clipSpace = zeroToTwo - 1.0;
+
+   gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
+
+   // pass the texCoord to the fragment shader
+   // The GPU will interpolate this value between points.
+   v_texCoord = a_texCoord;
+}
+`, "vertex");
+	
+	let shaderProgram = gl.createProgram();
+    gl.attachShader(shaderProgram, vertexShader);
+    gl.attachShader(shaderProgram, fragmentShader);
+    gl.linkProgram(shaderProgram);
+
+    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+      alert("Could not initialise shaders");
+    }
+
+    //gl.useProgram(shaderProgram);
+	return shaderProgram;
+}
+
+function Shadows(gl, viewport) {
+	// Create a texture.
+	this.shadowTexture = gl.createTexture();
+	gl.activeTexture(gl.TEXTURE2);
+	gl.bindTexture(gl.TEXTURE_2D, this.shadowTexture);
+	GL.anyResolutionTexture(gl);
+	this.gl = gl;
+	this.width = viewport.width;
+	this.height = viewport.height;
+
+	this.program = initShaders(gl);
+
+	this.u_eye = gl.getUniformLocation(this.program, "u_eye");
+	this.u_ambient = gl.getUniformLocation(this.program, "u_ambient");
+	this.u_specular = gl.getUniformLocation(this.program, "u_specular");
+	this.u_diffuse = gl.getUniformLocation(this.program, "u_diffuse");
+	this.u_shininess = gl.getUniformLocation(this.program, "u_shininess");
+	this.u_lightlocation = gl.getUniformLocation(this.program, "u_lightlocation");
+	this.positionLocation = gl.getAttribLocation(this.program, "a_position");
+  	this.texcoordLocation = gl.getAttribLocation(this.program, "a_texCoord");
+	this.u_image0Location = gl.getUniformLocation(this.program, "u_image0");
+	this.u_image1Location = gl.getUniformLocation(this.program, "u_image1");
+	this.u_image2Location = gl.getUniformLocation(this.program, "u_image2");
+	this.u_resolution = gl.getUniformLocation(this.program, "u_resolution");
+} 
+
+Shadows.prototype.preRender = function(positionBuffer, texcoordBuffer) {
+	this.gl.useProgram(this.program);
+	GL.activateBuffer(this.gl, this.positionLocation, positionBuffer);
+	GL.activateBuffer(this.gl, this.texcoordLocation, texcoordBuffer);
+}
+
+Shadows.prototype.render = function(eye, light, sdata) {
+	const gl = this.gl;
+	this.gl.uniform2f(this.u_resolution, this.width, this.height);
+	gl.uniform3f(this.u_eye, eye[0], eye[1], eye[2]);
+	gl.uniform3f(this.u_ambient, light.ambient[0], light.ambient[1], light.ambient[2]);
+	gl.uniform3f(this.u_specular, light.specular[0], light.specular[1], light.specular[2]);
+	gl.uniform3f(this.u_diffuse, light.diffuse[0], light.diffuse[1], light.diffuse[2]);
+	gl.uniform1f(this.u_shininess, 0.9);
+	gl.uniform3f(this.u_lightlocation, light.location[0], light.location[1], light.location[2]);
+
+	gl.uniform1i(this.u_image0Location, 0);  // texture unit 0
+	gl.uniform1i(this.u_image1Location, 1);  // texture unit 1
+	gl.uniform1i(this.u_image2Location, 2);  // texture unit 1
+
+	this.gl.activeTexture(gl.TEXTURE2);
+	this.gl.bindTexture(gl.TEXTURE_2D, this.shadowTexture);
+	this.gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, this.width, this.height, 0, gl.LUMINANCE, gl.FLOAT, sdata);
+
+	// Draw the rectangle.
+	var primitiveType = gl.TRIANGLES;
+	var offset = 0;
+	var count = 6;
+	gl.drawArrays(primitiveType, offset, count);
+}
+
+module.exports = Shadows;
+
+
+},{"./gl.js":2}],6:[function(require,module,exports){
 (function (global){
 const Ray = require('./ray.js');
 const Viewport = require('./viewport.js');
 const mat4 = require('gl-matrix').mat4;
 const vec3 = require('gl-matrix').vec3;
+const Normals = require('./normals.js');
+const Shadows = require('./shadows.js');
 
 let rays = [];
 let swidth = 0;
@@ -199,9 +604,10 @@ function Tracer(output, options) {
 
 	this.options = options;
 	this.gl = output.getContext("webgl");
-	this.program = initShaders(this.gl);
+	//this.program = initShaders(this.gl);
 	this.callback = undefined;
 	this.busy = false;
+	this.eye = null;
 
 	var bound = (options.boundary) ? options.boundary : [-1,1];
 	var fov = (options.fov) ? options.fov : 45;
@@ -218,8 +624,10 @@ function Tracer(output, options) {
 		if (e.data.cmd == "frame") {
 			me.busy = false;
 			//if (me.texture) me.generateColours(output, me.gl, me.texture, e.data.data);
-			me.renderGL(me.gl, e.data.depthTexture, e.data.colourTexture, output);
+			me.renderGL(me.gl, e.data.depthTexture, e.data.colourTexture, e.data.shadowTexture, output);
 			if (me.callback) me.callback("done");
+		} else if (e.data.cmd == "getnormals") {
+
 		}
 	}, false);
 
@@ -236,7 +644,10 @@ function Tracer(output, options) {
 
 	// Send viewport message
 
-	this.setupGL(output, this.gl, this.program);
+	this.setupGL(output, this.gl);
+
+	this.normals = new Normals(this.gl, output);
+	this.shadows = new Shadows(this.gl, output);
 }
 
 function initGL(canvas) {
@@ -251,14 +662,16 @@ function initGL(canvas) {
 	return gl;
 }
 
-function initShaders(gl) {
+/*function initShaders(gl) {
 	let fragmentShader = getShader(gl, `
 precision mediump float;
 
 // our texture
 uniform sampler2D u_image0;
 uniform sampler2D u_image1;
+uniform sampler2D u_image2;
 uniform highp vec2 u_resolution;
+uniform vec3 u_eye;
 
 // the texCoords passed in from the vertex shader.
 varying vec2 v_texCoord;
@@ -269,6 +682,7 @@ void main() {
 
 	vec4 myColour = texture2D(u_image0, v_texCoord);
 	vec4 myTColour = texture2D(u_image1, v_texCoord);
+	float mySColour = 1.0 - texture2D(u_image2, v_texCoord).r;
 	vec3 P0 = myColour.rgb;
 	vec4 P1 = texture2D(u_image0, vec2(v_texCoord.x - offset.x, v_texCoord.y));
 	vec4 P2 = texture2D(u_image0, vec2(v_texCoord.x + offset.x, v_texCoord.y));
@@ -294,19 +708,33 @@ void main() {
 
 	vec3 uAmbientColor = vec3(0.2,0.2,0.2);
 	vec3 uPointLightingColor = vec3(1.0,1.0,1.0);
+	vec3 uSpecularColor = vec3(0.2,0.2,0.2);
 
 	vec3 lightWeighting;
 	vec3 uPointLightingLocation = vec3(1.0,0.1,1.0);
       vec3 lightDirection = normalize(uPointLightingLocation - myColour.xyz);
+	vec3 E = normalize(u_eye - myColour.xyz);
+	vec3 R = normalize(-reflect(lightDirection,N));
 
-      float directionalLightWeighting = max(dot(N, lightDirection), 0.0);
-      lightWeighting = uAmbientColor + uPointLightingColor * directionalLightWeighting;
+	float u_shininess = 0.1;
+      float diffuseWeight = max(dot(N, lightDirection), 0.0)*mySColour;
+	  float specWeight = pow(max(dot(R,E),0.0),0.3*u_shininess)*mySColour;
 
-	if (myColour.a != 1.0) {
-		gl_FragColor = vec4(1.0, 1.0, 1.0,0.0);
-	} else {
-		gl_FragColor = vec4(myTColour.rgb * lightWeighting, 1.0);
-	}
+      lightWeighting = uAmbientColor + uPointLightingColor * diffuseWeight +
+		clamp(specWeight * uSpecularColor, 0.0,1.0);
+
+	//if (myColour.a != 1.0) {
+	//	gl_FragColor = vec4(1.0, 1.0, 1.0,0.0);
+	//} else {
+		// Full Lighting
+		gl_FragColor = vec4(myTColour.rgb * lightWeighting, myColour.a);
+
+		// Shadow ray
+		//gl_FragColor = vec4(normalize(uPointLightingLocation.xyz - myColour.xyz), myColour.a);
+
+		// Reflection rays
+		//gl_FragColor = vec4(reflect(lightDirection, N), myColour.a);
+	//}
 }
 `, "fragment");
 
@@ -347,9 +775,9 @@ void main() {
 
     //gl.useProgram(shaderProgram);
 	return shaderProgram;
-}
+}*/
 
-function getShader(gl, str, kind) {
+/*function getShader(gl, str, kind) {
       var shader;
       if (kind == "fragment") {
           shader = gl.createShader(gl.FRAGMENT_SHADER);
@@ -368,7 +796,7 @@ function getShader(gl, str, kind) {
       }
 
       return shader;
-  }
+  }*/
 
 function setRectangle(gl, x, y, width, height) {
   var x1 = x;
@@ -386,11 +814,12 @@ function setRectangle(gl, x, y, width, height) {
 }
 
 Tracer.prototype.setupGL = function(canvas, gl, program) {
-	var positionLocation = gl.getAttribLocation(program, "a_position");
-  	var texcoordLocation = gl.getAttribLocation(program, "a_texCoord");
+//	var positionLocation = gl.getAttribLocation(program, "a_position");
+ // 	var texcoordLocation = gl.getAttribLocation(program, "a_texCoord");
 
   // Create a buffer to put three 2d clip space points in
   var positionBuffer = gl.createBuffer();
+	this.positionBuffer = positionBuffer;
 
   // Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -399,6 +828,7 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
 
   // provide texture coordinates for the rectangle.
   var texcoordBuffer = gl.createBuffer();
+	this.texcoordBuffer = texcoordBuffer;
   gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
       0.0,  0.0,
@@ -421,7 +851,7 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
 	 // Create a texture.
-  this.colourTexture = gl.createTexture();
+  /*this.colourTexture = gl.createTexture();
   gl.activeTexture(gl.TEXTURE1);
   gl.bindTexture(gl.TEXTURE_2D, this.colourTexture);
 
@@ -431,35 +861,49 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
+  	 // Create a texture.
+  this.shadowTexture = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, this.shadowTexture);
+
+  // Set the parameters so we can render any size image.
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);*/
+
   // Tell it to use our program (pair of shaders)
-  gl.useProgram(program);
+  //gl.useProgram(program);
 
   // lookup the sampler locations.
-  var u_image0Location = gl.getUniformLocation(program, "u_image0");
-  var u_image1Location = gl.getUniformLocation(program, "u_image1");
+ // var u_image0Location = gl.getUniformLocation(program, "u_image0");
+ // var u_image1Location = gl.getUniformLocation(program, "u_image1");
+ // var u_image2Location = gl.getUniformLocation(program, "u_image2");
  
   // set which texture units to render with.
-  gl.uniform1i(u_image0Location, 0);  // texture unit 0
-  gl.uniform1i(u_image1Location, 1);  // texture unit 1
+  //gl.uniform1i(u_image0Location, 0);  // texture unit 0
+  //gl.uniform1i(u_image1Location, 1);  // texture unit 1
+  //gl.uniform1i(u_image2Location, 2);  // texture unit 1
 
   // lookup uniforms
-  var resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+  //var resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+	//this.shaderEye = gl.getUniformLocation(program, "u_eye");
 
 // Tell WebGL how to convert from clip space to pixels
   gl.viewport(0, 0, canvas.width, canvas.height);
 
   // Clear the canvas
-  gl.clearColor(44/255, 62/255, 80/255, 1.0);
+  gl.clearColor(0.0, 0.0, 0.0, 1.0);
   //gl.clear(gl.COLOR_BUFFER_BIT);
 
   // Turn on the position attribute
-  gl.enableVertexAttribArray(positionLocation);
+ // gl.enableVertexAttribArray(positionLocation);
 
   // Bind the position buffer.
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
 
   // Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
-  var size = 2;          // 2 components per iteration
+ /* var size = 2;          // 2 components per iteration
   var type = gl.FLOAT;   // the data is 32bit floats
   var normalize = false; // don't normalize the data
   var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
@@ -468,22 +912,22 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
       positionLocation, size, type, normalize, stride, offset)
 
   // Turn on the teccord attribute
-  gl.enableVertexAttribArray(texcoordLocation);
+  gl.enableVertexAttribArray(texcoordLocation);*/
 
   // Bind the position buffer.
   gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
 
   // Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
-  var size = 2;          // 2 components per iteration
+  /*var size = 2;          // 2 components per iteration
   var type = gl.FLOAT;   // the data is 32bit floats
   var normalize = false; // don't normalize the data
   var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
   var offset = 0;        // start at the beginning of the buffer
   gl.vertexAttribPointer(
-      texcoordLocation, size, type, normalize, stride, offset)
+      texcoordLocation, size, type, normalize, stride, offset)*/
 
   // set the resolution
-  gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+  //gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
 }
 
 Tracer.prototype.generateColours = function(vp, gl, f, data) {
@@ -505,9 +949,11 @@ Tracer.prototype.generateColours = function(vp, gl, f, data) {
 	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, vp.width, vp.height, 0, gl.RGB, gl.UNSIGNED_BYTE, texture);
 }
 
-Tracer.prototype.renderGL = function(gl, image, colours, canvas) {
+Tracer.prototype.renderGL = function(gl, image, colours, shadow, canvas) {
   gl.clear(gl.COLOR_BUFFER_BIT);
   var ext = gl.getExtension('OES_texture_float');
+
+	 //gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
 
 	// Upload the image into the texture.
   gl.activeTexture(gl.TEXTURE0);
@@ -515,16 +961,32 @@ Tracer.prototype.renderGL = function(gl, image, colours, canvas) {
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.FLOAT, image);
 
 
-	 gl.activeTexture(gl.TEXTURE1);
+	/* gl.activeTexture(gl.TEXTURE1);
 	gl.bindTexture(gl.TEXTURE_2D, this.colourTexture);
 	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, canvas.width, canvas.height, 0, gl.RGB, gl.UNSIGNED_BYTE, colours);
 
+   gl.activeTexture(gl.TEXTURE2);
+	gl.bindTexture(gl.TEXTURE_2D, this.shadowTexture);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, canvas.width, canvas.height, 0, gl.LUMINANCE, gl.FLOAT, shadow);
+*/
+
   // Draw the rectangle.
-  var primitiveType = gl.TRIANGLES;
+  /*var primitiveType = gl.TRIANGLES;
   var offset = 0;
   var count = 6;
-  gl.drawArrays(primitiveType, offset, count);
+  gl.drawArrays(primitiveType, offset, count);*/
 	//console.log("RENDER", image);
+
+	this.normals.preRender(this.positionBuffer,this.texcoordBuffer);
+	this.normals.render(this.eye);
+	this.shadows.preRender(this.positionBuffer,this.texcoordBuffer);
+	this.shadows.render(this.eye, {
+		shininess: 0.9,
+		location: [(1+1.5) / 2, (0.1+1.5) / 2, (1+1.5) / 2],
+		ambient: [0.5,0.5,0.5],
+		diffuse: [1.0,0.0,0.0],
+		specular: [0.2,0.2,0.2]
+	}, shadow);
 }
 
 /*function make(vp) {
@@ -738,6 +1200,12 @@ global.samples = 0;
 Tracer.prototype.render = function(f, p, matrix, cb) {
 	if (this.busy) return;
 
+	this.eye = vec3.create();
+	vec3.set(this.eye, 0,0,0);
+	if (matrix) vec3.transformMat4(this.eye, this.eye, matrix);
+
+	//this.gl.uniform3f(this.shaderEye, eye[0],eye[1],eye[2]);
+
 	if (f !== this.f) {
 		// Send new f to worker(s)
 		console.log("Sending f:", f.toString());
@@ -818,7 +1286,7 @@ Tracer.glmatrix = require("gl-matrix");
 
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./ray.js":2,"./viewport.js":4,"gl-matrix":5}],4:[function(require,module,exports){
+},{"./normals.js":3,"./ray.js":4,"./shadows.js":5,"./viewport.js":7,"gl-matrix":8}],7:[function(require,module,exports){
 const mat4 = require('gl-matrix').mat4;
 const vec3 = require('gl-matrix').vec3;
 
@@ -838,12 +1306,14 @@ function Viewport(fov, w, h, dres, bound) {
 	this.dres = (bound[1] - bound[0]) / dres;
 	this.count = dres;
 	this.bound = bound;
+
+	this.range = bound[1] - bound[0];
 }
 
 module.exports = Viewport;
 
 
-},{"gl-matrix":5}],5:[function(require,module,exports){
+},{"gl-matrix":8}],8:[function(require,module,exports){
 /**
  * @fileoverview gl-matrix - High performance matrix and vector operations
  * @author Brandon Jones
@@ -881,7 +1351,7 @@ exports.quat = require("./gl-matrix/quat.js");
 exports.vec2 = require("./gl-matrix/vec2.js");
 exports.vec3 = require("./gl-matrix/vec3.js");
 exports.vec4 = require("./gl-matrix/vec4.js");
-},{"./gl-matrix/common.js":6,"./gl-matrix/mat2.js":7,"./gl-matrix/mat2d.js":8,"./gl-matrix/mat3.js":9,"./gl-matrix/mat4.js":10,"./gl-matrix/quat.js":11,"./gl-matrix/vec2.js":12,"./gl-matrix/vec3.js":13,"./gl-matrix/vec4.js":14}],6:[function(require,module,exports){
+},{"./gl-matrix/common.js":9,"./gl-matrix/mat2.js":10,"./gl-matrix/mat2d.js":11,"./gl-matrix/mat3.js":12,"./gl-matrix/mat4.js":13,"./gl-matrix/quat.js":14,"./gl-matrix/vec2.js":15,"./gl-matrix/vec3.js":16,"./gl-matrix/vec4.js":17}],9:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -953,7 +1423,7 @@ glMatrix.equals = function(a, b) {
 
 module.exports = glMatrix;
 
-},{}],7:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -1391,7 +1861,7 @@ mat2.multiplyScalarAndAdd = function(out, a, b, scale) {
 
 module.exports = mat2;
 
-},{"./common.js":6}],8:[function(require,module,exports){
+},{"./common.js":9}],11:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -1862,7 +2332,7 @@ mat2d.equals = function (a, b) {
 
 module.exports = mat2d;
 
-},{"./common.js":6}],9:[function(require,module,exports){
+},{"./common.js":9}],12:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -2610,7 +3080,7 @@ mat3.equals = function (a, b) {
 
 module.exports = mat3;
 
-},{"./common.js":6}],10:[function(require,module,exports){
+},{"./common.js":9}],13:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -4748,7 +5218,7 @@ mat4.equals = function (a, b) {
 
 module.exports = mat4;
 
-},{"./common.js":6}],11:[function(require,module,exports){
+},{"./common.js":9}],14:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -5350,7 +5820,7 @@ quat.equals = vec4.equals;
 
 module.exports = quat;
 
-},{"./common.js":6,"./mat3.js":9,"./vec3.js":13,"./vec4.js":14}],12:[function(require,module,exports){
+},{"./common.js":9,"./mat3.js":12,"./vec3.js":16,"./vec4.js":17}],15:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -5939,7 +6409,7 @@ vec2.equals = function (a, b) {
 
 module.exports = vec2;
 
-},{"./common.js":6}],13:[function(require,module,exports){
+},{"./common.js":9}],16:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -6718,7 +7188,7 @@ vec3.equals = function (a, b) {
 
 module.exports = vec3;
 
-},{"./common.js":6}],14:[function(require,module,exports){
+},{"./common.js":9}],17:[function(require,module,exports){
 /* Copyright (c) 2015, Brandon Jones, Colin MacKenzie IV.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -7329,4 +7799,4 @@ vec4.equals = function (a, b) {
 
 module.exports = vec4;
 
-},{"./common.js":6}]},{},[1]);
+},{"./common.js":9}]},{},[1]);

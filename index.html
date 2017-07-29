@@ -128,12 +128,18 @@
 	
 	window.onload = function() {
 		tracer = new Construit.fgeo(output, {
-			boundary: [-1.5,1.5],
+			boundary: [-1.5,1.5], // Viewport range
 			depthResolution: 100,
 			fov: 45,
 			sample: 8,
 			progressive: false,
-			lod: 1.1
+			lod: 1.1,
+			subSamples: 8,
+			shadows: true,
+			shadowSamples: 32,
+			reflections: true,
+			adaptive: false,
+			minFPS: 0
 		});
 
 		tracer.setTexture(function(x,y,z) {
@@ -156,6 +162,6 @@
 		}, 100);*/
 	}
 </script>
-<canvas width="1280" height="720" id="output"></canvas>
+<canvas width="512" height="512" id="output"></canvas>
 </body>
 </html>

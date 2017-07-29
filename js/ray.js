@@ -16,6 +16,68 @@ function Ray(sx, sy) {
 	this.neighbours = null;
 	this.doreset = true;
 	this.attribute = 0;
+	this.nx = 0.0;
+	this.ny = 0.0;
+	this.nz = 0.0;
+}
+
+Ray.distance = function(pos, dir, f, step, farclip) {
+	var count = 0;
+
+	//const lod = 0.1;
+	const dxm = dir[0]*step;
+	const dym = dir[1]*step;
+	const dzm = dir[2]*step;
+
+	let x = pos[0];
+	let y = pos[1];
+	let z = pos[2];
+
+	while (count < farclip) {
+		var res = f.call(null, x, y, z);
+
+		if (res >= 0) {
+			return count;
+		}
+
+		x += dxm; //*(1.0+lod*count);
+		y += dym; //*(1.0+lod*count);
+		z += dzm; //*(1.0+lod*count);
+		count += step;
+	}
+
+	return -1;
+}
+
+Ray.intersection = function(out, oix, start, six, dir, dix, f, step, farclip) {
+	var count = 0;
+
+	//const lod = 0.1;
+	const dxm = dir[dix]*step;
+	const dym = dir[dix+1]*step;
+	const dzm = dir[dix+2]*step;
+
+	let x = start[six];
+	let y = start[six+1];
+	let z = start[six+2];
+
+	while (count < farclip) {
+		x += dxm;
+		y += dym;
+		z += dzm;
+		count += step;
+
+		var res = f.call(null, x, y, z);
+
+		if (res >= 0) {
+			out[oix] = x;
+			out[oix+1] = y;
+			out[oix+2] = z;
+			return true;
+		}
+	}
+
+	return false;
 }
 
 Ray.createFromTo = function(vp, from, to) {

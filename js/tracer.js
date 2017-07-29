@@ -2,6 +2,8 @@ const Ray = require('./ray.js');
 const Viewport = require('./viewport.js');
 const mat4 = require('gl-matrix').mat4;
 const vec3 = require('gl-matrix').vec3;
+const Normals = require('./normals.js');
+const Shadows = require('./shadows.js');
 
 let rays = [];
 let swidth = 0;
@@ -12,9 +14,10 @@ function Tracer(output, options) {
 
 	this.options = options;
 	this.gl = output.getContext("webgl");
-	this.program = initShaders(this.gl);
+	//this.program = initShaders(this.gl);
 	this.callback = undefined;
 	this.busy = false;
+	this.eye = null;
 
 	var bound = (options.boundary) ? options.boundary : [-1,1];
 	var fov = (options.fov) ? options.fov : 45;
@@ -31,8 +34,10 @@ function Tracer(output, options) {
 		if (e.data.cmd == "frame") {
 			me.busy = false;
 			//if (me.texture) me.generateColours(output, me.gl, me.texture, e.data.data);
-			me.renderGL(me.gl, e.data.depthTexture, e.data.colourTexture, output);
+			me.renderGL(me.gl, e.data.depthTexture, e.data.colourTexture, e.data.shadowTexture, output);
 			if (me.callback) me.callback("done");
+		} else if (e.data.cmd == "getnormals") {
+
 		}
 	}, false);
 
@@ -49,7 +54,10 @@ function Tracer(output, options) {
 
 	// Send viewport message
 
-	this.setupGL(output, this.gl, this.program);
+	this.setupGL(output, this.gl);
+
+	this.normals = new Normals(this.gl, output);
+	this.shadows = new Shadows(this.gl, output);
 }
 
 function initGL(canvas) {
@@ -64,14 +72,16 @@ function initGL(canvas) {
 	return gl;
 }
 
-function initShaders(gl) {
+/*function initShaders(gl) {
 	let fragmentShader = getShader(gl, `
 precision mediump float;
 
 // our texture
 uniform sampler2D u_image0;
 uniform sampler2D u_image1;
+uniform sampler2D u_image2;
 uniform highp vec2 u_resolution;
+uniform vec3 u_eye;
 
 // the texCoords passed in from the vertex shader.
 varying vec2 v_texCoord;
@@ -82,6 +92,7 @@ void main() {
 
 	vec4 myColour = texture2D(u_image0, v_texCoord);
 	vec4 myTColour = texture2D(u_image1, v_texCoord);
+	float mySColour = 1.0 - texture2D(u_image2, v_texCoord).r;
 	vec3 P0 = myColour.rgb;
 	vec4 P1 = texture2D(u_image0, vec2(v_texCoord.x - offset.x, v_texCoord.y));
 	vec4 P2 = texture2D(u_image0, vec2(v_texCoord.x + offset.x, v_texCoord.y));
@@ -107,19 +118,33 @@ void main() {
 
 	vec3 uAmbientColor = vec3(0.2,0.2,0.2);
 	vec3 uPointLightingColor = vec3(1.0,1.0,1.0);
+	vec3 uSpecularColor = vec3(0.2,0.2,0.2);
 
 	vec3 lightWeighting;
 	vec3 uPointLightingLocation = vec3(1.0,0.1,1.0);
       vec3 lightDirection = normalize(uPointLightingLocation - myColour.xyz);
+	vec3 E = normalize(u_eye - myColour.xyz);
+	vec3 R = normalize(-reflect(lightDirection,N));
 
-      float directionalLightWeighting = max(dot(N, lightDirection), 0.0);
-      lightWeighting = uAmbientColor + uPointLightingColor * directionalLightWeighting;
+	float u_shininess = 0.1;
+      float diffuseWeight = max(dot(N, lightDirection), 0.0)*mySColour;
+	  float specWeight = pow(max(dot(R,E),0.0),0.3*u_shininess)*mySColour;
 
-	if (myColour.a != 1.0) {
-		gl_FragColor = vec4(1.0, 1.0, 1.0,0.0);
-	} else {
-		gl_FragColor = vec4(myTColour.rgb * lightWeighting, 1.0);
-	}
+      lightWeighting = uAmbientColor + uPointLightingColor * diffuseWeight +
+		clamp(specWeight * uSpecularColor, 0.0,1.0);
+
+	//if (myColour.a != 1.0) {
+	//	gl_FragColor = vec4(1.0, 1.0, 1.0,0.0);
+	//} else {
+		// Full Lighting
+		gl_FragColor = vec4(myTColour.rgb * lightWeighting, myColour.a);
+
+		// Shadow ray
+		//gl_FragColor = vec4(normalize(uPointLightingLocation.xyz - myColour.xyz), myColour.a);
+
+		// Reflection rays
+		//gl_FragColor = vec4(reflect(lightDirection, N), myColour.a);
+	//}
 }
 `, "fragment");
 
@@ -160,9 +185,9 @@ void main() {
 
     //gl.useProgram(shaderProgram);
 	return shaderProgram;
-}
+}*/
 
-function getShader(gl, str, kind) {
+/*function getShader(gl, str, kind) {
       var shader;
       if (kind == "fragment") {
           shader = gl.createShader(gl.FRAGMENT_SHADER);
@@ -181,7 +206,7 @@ function getShader(gl, str, kind) {
       }
 
       return shader;
-  }
+  }*/
 
 function setRectangle(gl, x, y, width, height) {
   var x1 = x;
@@ -199,11 +224,12 @@ function setRectangle(gl, x, y, width, height) {
 }
 
 Tracer.prototype.setupGL = function(canvas, gl, program) {
-	var positionLocation = gl.getAttribLocation(program, "a_position");
-  	var texcoordLocation = gl.getAttribLocation(program, "a_texCoord");
+//	var positionLocation = gl.getAttribLocation(program, "a_position");
+ // 	var texcoordLocation = gl.getAttribLocation(program, "a_texCoord");
 
   // Create a buffer to put three 2d clip space points in
   var positionBuffer = gl.createBuffer();
+	this.positionBuffer = positionBuffer;
 
   // Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -212,6 +238,7 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
 
   // provide texture coordinates for the rectangle.
   var texcoordBuffer = gl.createBuffer();
+	this.texcoordBuffer = texcoordBuffer;
   gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
       0.0,  0.0,
@@ -234,7 +261,7 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
 	 // Create a texture.
-  this.colourTexture = gl.createTexture();
+  /*this.colourTexture = gl.createTexture();
   gl.activeTexture(gl.TEXTURE1);
   gl.bindTexture(gl.TEXTURE_2D, this.colourTexture);
 
@@ -244,35 +271,49 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
+  	 // Create a texture.
+  this.shadowTexture = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, this.shadowTexture);
+
+  // Set the parameters so we can render any size image.
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);*/
+
   // Tell it to use our program (pair of shaders)
-  gl.useProgram(program);
+  //gl.useProgram(program);
 
   // lookup the sampler locations.
-  var u_image0Location = gl.getUniformLocation(program, "u_image0");
-  var u_image1Location = gl.getUniformLocation(program, "u_image1");
+ // var u_image0Location = gl.getUniformLocation(program, "u_image0");
+ // var u_image1Location = gl.getUniformLocation(program, "u_image1");
+ // var u_image2Location = gl.getUniformLocation(program, "u_image2");
  
   // set which texture units to render with.
-  gl.uniform1i(u_image0Location, 0);  // texture unit 0
-  gl.uniform1i(u_image1Location, 1);  // texture unit 1
+  //gl.uniform1i(u_image0Location, 0);  // texture unit 0
+  //gl.uniform1i(u_image1Location, 1);  // texture unit 1
+  //gl.uniform1i(u_image2Location, 2);  // texture unit 1
 
   // lookup uniforms
-  var resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+  //var resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+	//this.shaderEye = gl.getUniformLocation(program, "u_eye");
 
 // Tell WebGL how to convert from clip space to pixels
   gl.viewport(0, 0, canvas.width, canvas.height);
 
   // Clear the canvas
-  gl.clearColor(44/255, 62/255, 80/255, 1.0);
+  gl.clearColor(0.0, 0.0, 0.0, 1.0);
   //gl.clear(gl.COLOR_BUFFER_BIT);
 
   // Turn on the position attribute
-  gl.enableVertexAttribArray(positionLocation);
+ // gl.enableVertexAttribArray(positionLocation);
 
   // Bind the position buffer.
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
 
   // Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
-  var size = 2;          // 2 components per iteration
+ /* var size = 2;          // 2 components per iteration
   var type = gl.FLOAT;   // the data is 32bit floats
   var normalize = false; // don't normalize the data
   var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
@@ -281,22 +322,22 @@ Tracer.prototype.setupGL = function(canvas, gl, program) {
       positionLocation, size, type, normalize, stride, offset)
 
   // Turn on the teccord attribute
-  gl.enableVertexAttribArray(texcoordLocation);
+  gl.enableVertexAttribArray(texcoordLocation);*/
 
   // Bind the position buffer.
   gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
 
   // Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
-  var size = 2;          // 2 components per iteration
+  /*var size = 2;          // 2 components per iteration
   var type = gl.FLOAT;   // the data is 32bit floats
   var normalize = false; // don't normalize the data
   var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
   var offset = 0;        // start at the beginning of the buffer
   gl.vertexAttribPointer(
-      texcoordLocation, size, type, normalize, stride, offset)
+      texcoordLocation, size, type, normalize, stride, offset)*/
 
   // set the resolution
-  gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+  //gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
 }
 
 Tracer.prototype.generateColours = function(vp, gl, f, data) {
@@ -318,9 +359,11 @@ Tracer.prototype.generateColours = function(vp, gl, f, data) {
 	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, vp.width, vp.height, 0, gl.RGB, gl.UNSIGNED_BYTE, texture);
 }
 
-Tracer.prototype.renderGL = function(gl, image, colours, canvas) {
+Tracer.prototype.renderGL = function(gl, image, colours, shadow, canvas) {
   gl.clear(gl.COLOR_BUFFER_BIT);
   var ext = gl.getExtension('OES_texture_float');
+
+	 //gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
 
 	// Upload the image into the texture.
   gl.activeTexture(gl.TEXTURE0);
@@ -328,16 +371,32 @@ Tracer.prototype.renderGL = function(gl, image, colours, canvas) {
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.FLOAT, image);
 
 
-	 gl.activeTexture(gl.TEXTURE1);
+	/* gl.activeTexture(gl.TEXTURE1);
 	gl.bindTexture(gl.TEXTURE_2D, this.colourTexture);
 	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, canvas.width, canvas.height, 0, gl.RGB, gl.UNSIGNED_BYTE, colours);
 
+   gl.activeTexture(gl.TEXTURE2);
+	gl.bindTexture(gl.TEXTURE_2D, this.shadowTexture);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, canvas.width, canvas.height, 0, gl.LUMINANCE, gl.FLOAT, shadow);
+*/
+
   // Draw the rectangle.
-  var primitiveType = gl.TRIANGLES;
+  /*var primitiveType = gl.TRIANGLES;
   var offset = 0;
   var count = 6;
-  gl.drawArrays(primitiveType, offset, count);
+  gl.drawArrays(primitiveType, offset, count);*/
 	//console.log("RENDER", image);
+
+	this.normals.preRender(this.positionBuffer,this.texcoordBuffer);
+	this.normals.render(this.eye);
+	this.shadows.preRender(this.positionBuffer,this.texcoordBuffer);
+	this.shadows.render(this.eye, {
+		shininess: 0.9,
+		location: [(1+1.5) / 2, (0.1+1.5) / 2, (1+1.5) / 2],
+		ambient: [0.5,0.5,0.5],
+		diffuse: [1.0,0.0,0.0],
+		specular: [0.2,0.2,0.2]
+	}, shadow);
 }
 
 /*function make(vp) {
@@ -550,6 +609,12 @@ global.samples = 0;
 
 Tracer.prototype.render = function(f, p, matrix, cb) {
 	if (this.busy) return;
+
+	this.eye = vec3.create();
+	vec3.set(this.eye, 0,0,0);
+	if (matrix) vec3.transformMat4(this.eye, this.eye, matrix);
+
+	//this.gl.uniform3f(this.shaderEye, eye[0],eye[1],eye[2]);
 
 	if (f !== this.f) {
 		// Send new f to worker(s)

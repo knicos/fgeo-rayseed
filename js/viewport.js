@@ -17,6 +17,8 @@ function Viewport(fov, w, h, dres, bound) {
 	this.dres = (bound[1] - bound[0]) / dres;
 	this.count = dres;
 	this.bound = bound;
+
+	this.range = bound[1] - bound[0];
 }
 
 module.exports = Viewport;

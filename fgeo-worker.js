@@ -122,6 +122,68 @@ function Ray(sx, sy) {
 	this.neighbours = null;
 	this.doreset = true;
 	this.attribute = 0;
+	this.nx = 0.0;
+	this.ny = 0.0;
+	this.nz = 0.0;
+}
+
+Ray.distance = function(pos, dir, f, step, farclip) {
+	var count = 0;
+
+	//const lod = 0.1;
+	const dxm = dir[0]*step;
+	const dym = dir[1]*step;
+	const dzm = dir[2]*step;
+
+	let x = pos[0];
+	let y = pos[1];
+	let z = pos[2];
+
+	while (count < farclip) {
+		var res = f.call(null, x, y, z);
+
+		if (res >= 0) {
+			return count;
+		}
+
+		x += dxm; //*(1.0+lod*count);
+		y += dym; //*(1.0+lod*count);
+		z += dzm; //*(1.0+lod*count);
+		count += step;
+	}
+
+	return -1;
+}
+
+Ray.intersection = function(out, oix, start, six, dir, dix, f, step, farclip) {
+	var count = 0;
+
+	//const lod = 0.1;
+	const dxm = dir[dix]*step;
+	const dym = dir[dix+1]*step;
+	const dzm = dir[dix+2]*step;
+
+	let x = start[six];
+	let y = start[six+1];
+	let z = start[six+2];
+
+	while (count < farclip) {
+		x += dxm;
+		y += dym;
+		z += dzm;
+		count += step;
+
+		var res = f.call(null, x, y, z);
+
+		if (res >= 0) {
+			out[oix] = x;
+			out[oix+1] = y;
+			out[oix+2] = z;
+			return true;
+		}
+	}
+
+	return false;
 }
 
 Ray.createFromTo = function(vp, from, to) {
@@ -302,6 +364,8 @@ function Viewport(fov, w, h, dres, bound) {
 	this.dres = (bound[1] - bound[0]) / dres;
 	this.count = dres;
 	this.bound = bound;
+
+	this.range = bound[1] - bound[0];
 }
 
 module.exports = Viewport;
@@ -534,6 +598,19 @@ function updateColour(ray) {
 	tdata[i*3+2] = b;
 }
 
+function calculateNormals(rays) {
+	for (var y=0; y<rays.length; y++) {
+		var l = rays[y];
+		for (var x=0; x<l.length; x++) {
+			var ray = l[x];
+
+			for (var i=0; i<ray.neighbours.length; i++) {
+				
+			}
+		}
+	}
+}
+
 function renderTextures(vp, rays, odata, tdata) {
 	for (var i=0; i<rays.length; i++) {
 	let line = rays[i];
@@ -548,9 +625,9 @@ function renderTextures(vp, rays, odata, tdata) {
 		var ix = ray.sx + ray.sy * vp.width;
 
 		// Depth texture
-		odata[ix*4] = ray.x;
-		odata[ix*4+1] = ray.y;
-		odata[ix*4+2] = ray.z;
+		odata[ix*4] = (ray.x - vp.bound[0]) / vp.range;
+		odata[ix*4+1] = (ray.y - vp.bound[0]) / vp.range;
+		odata[ix*4+2] = (ray.z - vp.bound[0]) / vp.range;
 		odata[ix*4+3] = 1.0;
 
 		// Calculate shadows here...
@@ -574,9 +651,80 @@ var p = null;
 var odata = null;
 var tdata = null;
 
+let jitter = [];
+
+function poisson(mean) {
+	var L = Math.exp(-mean);
+	var p = 1.0;
+	var k=0;
+	do {
+		k++;
+		p*=Math.random();
+	} while (p > L);
+	return k-1;
+}
+
+for (var i=0; i<32; i++) {
+	jitter.push([
+		(poisson(5)-5) / 5,
+		(poisson(5)-5) / 5,
+		(poisson(5)-5) / 5
+	]);
+}
+
+function sampleF(viewport, sample, x, y, z, w, h, d) {
+	let sx = ((x - viewport.bound[0]) / viewport.range) * w;
+	let sy = ((y - viewport.bound[0]) / viewport.range) * h;
+	let sz = ((z - viewport.bound[0]) / viewport.range) * d;
+
+	let ix = Math.round(sx) + Math.round(sy)*w + Math.round(sz)*w*h;
+	return [sample[ix*2],sample[ix*2+1]];
+}
+
+function createSampleF(viewport, f, w, h, d) {
+	const dx = viewport.range / w;
+	const dy = viewport.range / h;
+	const dz = viewport.range / d;
+
+	const sx = viewport.bound[0];
+	const sy = viewport.bound[0];
+	const sz = viewport.bound[0];
+
+	let x = sx;
+	let y = sy;
+	let z = sz;
+
+	let result = new Float32Array(new ArrayBuffer(w*h*d*4*2));
+	let ix = 0;
+	let attrib = {};
+	let r = 0;
+
+	for (var i=0; i<d; i++) {
+		y = sy;
+		result[i] = [];
+		for (var j=0; j<h; j++) {
+			x = sx;
+			result[i][j] = [];
+			for (k=0; k<w; k++) {
+				result[ix++] = f.call(attrib, x,y,z);
+				result[ix++] = attrib.attribute;
+				//result[ix++] = (r >= 0) ? attrib.attribute : -1;
+				x += dx;
+			}
+			y += dy;
+		}
+		z += dz;
+	}
+
+	return result;
+}
+
 function render(f, matrix) {
+	const doshadows = true;
+
 	odata = new Float32Array(new ArrayBuffer(viewport.width*viewport.height*4*4));
 	tdata = new Uint8Array(new ArrayBuffer(viewport.width*viewport.height*3));
+	sdata = new Float32Array(new ArrayBuffer(viewport.width*viewport.height*4));
 
 	reset(rays, viewport, matrix);
 	seed(rays, q, sample);
@@ -589,31 +737,47 @@ function render(f, matrix) {
 	renderTextures(viewport, rays, odata, tdata);
 	console.timeEnd("textures");
 	console.time("shadows");
-	//if (shadows) {
+
+	//var presample = createSampleF(viewport, f, 100, 100, 100);
+
+	if (doshadows) {
 		// For each pixel, do a low res resample towards light
 		var l = viewport.width*viewport.height;
 		var light = vec3.create();
+		var lightSize = 0.3;
 		vec3.set(light, 1, 0.1, 1);
-		for (var i=0; i<l; i++) {
-			if (odata[i*4+3] > 0) {
-				// Do a shadow ray to light
-				var r = Ray.createFromTo(viewport, [odata[i*4],odata[i*4+1],odata[i*4+2]], light);
-				var d = r.distance(f, 1, viewport.count);
-				if (d >= 0) {
-					tdata[i*3] *= 0.7;
-					tdata[i*3+1] *= 0.7;
-					tdata[i*3+2] *= 0.7;
+		var i = 0;
+		for (var y=0; y<viewport.height; y++) {
+			var line = rays[y];
+			for (var x=0; x<viewport.width; x++) {
+				var ray = line[x];
+				if (ray.value >= 0) {
+					// Do a shadow ray to light+jitter
+					var d = 0;
+					for (var j=0; j<jitter.length; j++) {
+						var r = Ray.createFromTo(viewport, [ray.x,ray.y,ray.z],
+							[light[0]+jitter[j][0]*lightSize, light[1]+jitter[j][1]*lightSize, light[2]+jitter[j][2]*lightSize]);
+						d += (r.distance(f, 2, viewport.count/2) > 0) ? 1 : 0;
+					}
+					d = d / jitter.length;
+					if (d > 0) {
+						var d2 = 0.8*d; // + (1.0 - 1.0 / (d*viewport.dres))*0.3;
+						sdata[i] = d2;
+						//tdata[i*3+1] *= d2;
+						//tdata[i*3+2] *= d2;
+					}
 				}
+				i++;
 			}
 		}
-	//}
+	}
 	console.timeEnd("shadows");
 
 	// Next calculate surface normals
 
 	// Then generate reflection rays
 
-	postMessage({cmd: "frame", depthTexture: odata, colourTexture: tdata},[odata.buffer,tdata.buffer]);
+	postMessage({cmd: "frame", depthTexture: odata, colourTexture: tdata, shadowTexture: sdata},[odata.buffer,tdata.buffer, sdata.buffer]);
 }
 
 onmessage = function(e) {
